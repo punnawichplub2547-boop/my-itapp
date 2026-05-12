@@ -585,7 +585,7 @@ test('uses a UTC-safe created_at value and transaction locking for mysql updates
   });
 
   assert.equal(connection.executeCalls[0]?.sql.startsWith('INSERT INTO repair_tickets'), true);
-  assert.match(String(connection.executeCalls[0]?.params?.[9]), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  assert.match(String(connection.executeCalls[0]?.params?.[8]), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   assert.match(created.createdAt, /^\d{4}-\d{2}-\d{2}T/);
 
   connection.row = {

@@ -51,7 +51,7 @@ interface TicketStore {
 }
 
 interface TicketRow extends RowDataPacket {
-  id: string;
+  id: number | string;
   device_name: string;
   employee_name: string;
   employee_email: string;
@@ -263,9 +263,8 @@ export class MySqlTicketRepository implements TicketRepository {
 
   async create(ticket: RepairTicket) {
     const db = this.pool;
-    await db.execute<ResultSetHeader>(
+    const [result] = await db.execute<ResultSetHeader>(
       `INSERT INTO repair_tickets (
-        id,
         device_name,
         employee_name,
         employee_email,
@@ -278,11 +277,11 @@ export class MySqlTicketRepository implements TicketRepository {
         notes_json,
         history_json,
         attachments_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       buildTicketSqlValues(ticket)
     );
 
-    return this.findById(ticket.id);
+    return this.findById(String(result.insertId));
   }
 
   async list() {
@@ -716,7 +715,6 @@ export class FileTicketRepository implements TicketRepository {
 
 function buildTicketSqlValues(ticket: RepairTicket) {
   return [
-    ticket.id,
     ticket.deviceName,
     ticket.employeeName,
     ticket.employeeEmail,
@@ -734,7 +732,7 @@ function buildTicketSqlValues(ticket: RepairTicket) {
 
 function mapTicketRow(row: TicketRow): RepairTicket {
   return {
-    id: row.id,
+    id: String(row.id),
     deviceName: row.device_name ?? '',
     employeeName: row.employee_name ?? '',
     employeeEmail: row.employee_email ?? '',
