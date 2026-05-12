@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import type { RepairTicket } from '../../types';
+import type { RepairTicket, TicketNote } from '../../types';
 import {
   MySqlTicketRepository,
   createTicket,
@@ -77,6 +77,23 @@ class InMemoryTicketRepository implements TicketRepository {
     ];
 
     return { ticket, changed: true };
+  }
+
+  async addNote(ticketId: string, note: TicketNote) {
+    const ticket = this.tickets.find((entry) => entry.id === ticketId);
+    assert.ok(ticket, `Expected ticket ${ticketId} to exist`);
+    ticket.notes = [...(ticket.notes ?? []), note];
+    ticket.history = [
+      ...(ticket.history ?? []),
+      { id: `note-hist-${ticket.notes.length}`, action: 'Note Added', user: note.author, timestamp: note.timestamp },
+    ];
+    return ticket;
+  }
+
+  async deleteById(ticketId: string) {
+    const index = this.tickets.findIndex((entry) => entry.id === ticketId);
+    assert.ok(index !== -1, `Expected ticket ${ticketId} to exist`);
+    this.tickets.splice(index, 1);
   }
 }
 
@@ -396,6 +413,12 @@ test('rejects missing tickets through the exported service helper', async () => 
       throw new TicketNotFoundError(ticketId);
     },
     async transitionStatus(ticketId: string) {
+      throw new TicketNotFoundError(ticketId);
+    },
+    async addNote(ticketId: string) {
+      throw new TicketNotFoundError(ticketId);
+    },
+    async deleteById(ticketId: string) {
       throw new TicketNotFoundError(ticketId);
     },
   };

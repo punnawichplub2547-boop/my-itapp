@@ -10,10 +10,14 @@ export default function TicketManagementCenter({
   tickets = MOCK_TICKETS,
   selectedId,
   onSelectTicket,
+  onTicketUpdated = () => {},
+  onTicketDeleted = () => {},
 }: {
   tickets?: RepairTicket[];
   selectedId: string | null;
   onSelectTicket: (id: string | null) => void;
+  onTicketUpdated?: (ticket: RepairTicket) => void;
+  onTicketDeleted?: (ticketId: string) => void;
 }) {
   const [activeTab, setActiveTab] = useState('All Open Tickets');
 
@@ -150,8 +154,11 @@ export default function TicketManagementCenter({
       <AnimatePresence>
         {selectedId && (
           <TicketDetailModal
+            key={selectedId}
             ticket={tickets.find(t => t.id === selectedId) || filteredTickets[0]}
             onClose={() => onSelectTicket(null)}
+            onTicketUpdated={onTicketUpdated}
+            onTicketDeleted={onTicketDeleted}
           />
         )}
       </AnimatePresence>
@@ -159,9 +166,101 @@ export default function TicketManagementCenter({
   );
 }
 
-function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose: () => void }) {
-  const [activeTab, setActiveTab] = useState('notes'); // notes, history, email
+function formatTimestamp(ts: string) {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) +
+    ', ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+}
+
+function TicketDetailModal({
+  ticket,
+  onClose,
+  onTicketUpdated,
+  onTicketDeleted,
+}: {
+  ticket: RepairTicket;
+  onClose: () => void;
+  onTicketUpdated: (ticket: RepairTicket) => void;
+  onTicketDeleted: (ticketId: string) => void;
+}) {
+  const [localTicket, setLocalTicket] = useState<RepairTicket>(ticket);
+  const [activeTab, setActiveTab] = useState('notes');
   const [emailStatus, setEmailStatus] = useState<'idle' | 'preview' | 'sent'>('idle');
+  const [noteText, setNoteText] = useState('');
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+
+  async function handleStatusShift(nextStatus: RepairTicket['status']) {
+    if (nextStatus === localTicket.status || isUpdating) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      const response = await fetch(`/api/tickets/${localTicket.id}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ previousStatus: localTicket.status, nextStatus, ticket: localTicket }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setUpdateError(result.error ?? 'Failed to update status.');
+        return;
+      }
+      const updated = result.ticket as RepairTicket;
+      setLocalTicket(updated);
+      onTicketUpdated(updated);
+    } catch {
+      setUpdateError('Network error. Please try again.');
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  async function handleAddNote() {
+    if (!noteText.trim() || isUpdating) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      const response = await fetch(`/api/tickets/${localTicket.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteContent: noteText }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setUpdateError(result.error ?? 'Failed to add note.');
+        return;
+      }
+      const updated = result.ticket as RepairTicket;
+      setLocalTicket(updated);
+      setNoteText('');
+      onTicketUpdated(updated);
+    } catch {
+      setUpdateError('Network error. Please try again.');
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm(`Delete ticket ${localTicket.id}? This cannot be undone.`)) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      const response = await fetch(`/api/tickets/${localTicket.id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const result = await response.json().catch(() => ({}));
+        setUpdateError((result as { error?: string }).error ?? 'Failed to delete ticket.');
+        return;
+      }
+      onTicketDeleted(localTicket.id);
+      onClose();
+    } catch {
+      setUpdateError('Network error. Please try again.');
+    } finally {
+      setIsUpdating(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 sm:p-6 lg:p-12">
@@ -185,12 +284,12 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-xl font-bold text-primary tracking-tight">{ticket.id}</h3>
+                <h3 className="text-xl font-bold text-primary tracking-tight">{localTicket.id}</h3>
                 <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase border ${
-                  ticket.status === 'In Progress' ? 'bg-blue-50 text-blue-700 border-blue-200' :
-                  ticket.status === 'Waiting for Parts' ? 'bg-orange-50 text-orange-700 border-orange-200' :
-                  ticket.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-secondary border-gray-200'
-                }`}>{ticket.status}</span>
+                  localTicket.status === 'In Progress' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                  localTicket.status === 'Waiting for Parts' ? 'bg-orange-50 text-orange-700 border-orange-200' :
+                  localTicket.status === 'Completed' ? 'bg-green-50 text-green-700 border-green-200' : 'bg-gray-50 text-secondary border-gray-200'
+                }`}>{localTicket.status}</span>
               </div>
               <p className="text-xs text-secondary font-medium tracking-tight">Support Ticket Detail & Management</p>
             </div>
@@ -208,21 +307,21 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
               <div className="bg-white border border-outline-variant p-5 rounded-2xl space-y-4 shadow-sm">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-primary font-black uppercase text-sm">
-                    {ticket.employeeName.charAt(0)}
+                    {localTicket.employeeName.charAt(0)}
                   </div>
                   <div className="min-w-0">
-                    <p className="font-bold text-primary truncate leading-tight">{ticket.employeeName}</p>
-                    <p className="text-[11px] text-secondary font-medium truncate">{ticket.employeeEmail}</p>
+                    <p className="font-bold text-primary truncate leading-tight">{localTicket.employeeName}</p>
+                    <p className="text-[11px] text-secondary font-medium truncate">{localTicket.employeeEmail}</p>
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4 pt-4 border-t border-outline-variant/30 text-[11px]">
                   <div>
                     <p className="text-outline uppercase font-black text-[9px] tracking-widest mb-0.5">Department</p>
-                    <p className="font-bold text-primary">{ticket.department}</p>
+                    <p className="font-bold text-primary">{localTicket.department}</p>
                   </div>
                   <div className="text-right">
                     <p className="text-outline uppercase font-black text-[9px] tracking-widest mb-0.5">Reported On</p>
-                    <p className="font-bold text-primary italic leading-none">{ticket.createdAt}</p>
+                    <p className="font-bold text-primary italic leading-none">{formatTimestamp(localTicket.createdAt)}</p>
                   </div>
                 </div>
               </div>
@@ -235,7 +334,7 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
                   <div className="bg-primary/5 p-2 rounded-lg text-primary">
                     <Laptop size={20} />
                   </div>
-                  <p className="font-bold text-primary text-[15px]">{ticket.deviceName}</p>
+                  <p className="font-bold text-primary text-[15px]">{localTicket.deviceName}</p>
                 </div>
                 <div className="space-y-4 pt-2">
                   <div>
@@ -243,15 +342,15 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
                       <HelpCircle size={10} /> Problem Description
                     </p>
                     <p className="text-xs text-secondary leading-relaxed bg-surface-container-low p-3 rounded-xl border border-outline-variant/30">
-                      {ticket.description}
+                      {localTicket.description}
                     </p>
                   </div>
                   <div className="flex items-center justify-between">
                     <p className="text-outline uppercase font-black text-[9px] tracking-widest">Priority level</p>
                     <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${
-                      ticket.priority === 'Critical' ? 'text-error' :
-                      ticket.priority === 'High' ? 'text-orange-600' : 'text-blue-600'
-                    }`}>● {ticket.priority}</span>
+                      localTicket.priority === 'Critical' ? 'text-error' :
+                      localTicket.priority === 'High' ? 'text-orange-600' : 'text-blue-600'
+                    }`}>● {localTicket.priority}</span>
                   </div>
                 </div>
               </div>
@@ -294,25 +393,37 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
                     <span className="text-[10px] font-black text-outline uppercase tracking-widest">Internal only</span>
                   </div>
                   <div className="space-y-4">
-                    <div className="bg-surface-container-low/50 p-4 rounded-2xl border border-outline-variant/30 flex gap-4">
-                      <div className="shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-[10px] border border-primary/20">A</div>
-                      <div className="flex-1">
-                        <div className="flex justify-between items-baseline mb-1">
-                          <p className="text-xs font-bold text-primary">Support Admin</p>
-                          <p className="text-[9px] font-mono text-outline">Oct 24, 02:45 PM</p>
+                    {(localTicket.notes ?? []).length === 0 ? (
+                      <p className="text-[11px] text-outline italic text-center py-4">No notes yet.</p>
+                    ) : (localTicket.notes ?? []).map((note) => (
+                      <div key={note.id} className="bg-surface-container-low/50 p-4 rounded-2xl border border-outline-variant/30 flex gap-4">
+                        <div className="shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-black text-[10px] border border-primary/20">
+                          {note.author.charAt(0).toUpperCase()}
                         </div>
-                        <p className="text-[13px] text-secondary leading-relaxed">System diagnostics started. Memory benchmark requested. Waiting for initial thermal readings before proceeding with BIOS update.</p>
+                        <div className="flex-1">
+                          <div className="flex justify-between items-baseline mb-1">
+                            <p className="text-xs font-bold text-primary">{note.author}</p>
+                            <p className="text-[9px] font-mono text-outline">{formatTimestamp(note.timestamp)}</p>
+                          </div>
+                          <p className="text-[13px] text-secondary leading-relaxed">{note.content}</p>
+                        </div>
                       </div>
-                    </div>
+                    ))}
                   </div>
                   <div className="pt-4 sticky bottom-0 bg-white">
                     <div className="relative">
-                      <textarea 
+                      <textarea
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
                         placeholder="Add a repair note..."
                         className="w-full p-4 pr-12 bg-white border-2 border-outline-variant focus:border-primary rounded-2xl text-[13px] outline-none transition-all resize-none shadow-sm"
                         rows={3}
                       />
-                      <button className="absolute right-4 bottom-4 p-2.5 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all">
+                      <button
+                        onClick={handleAddNote}
+                        disabled={!noteText.trim() || isUpdating}
+                        className="absolute right-4 bottom-4 p-2.5 bg-primary text-white rounded-xl shadow-lg shadow-primary/20 hover:scale-105 active:scale-95 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
                         <Send size={16} />
                       </button>
                     </div>
@@ -326,17 +437,14 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
                     <h5 className="font-bold text-primary flex items-center gap-2"><Clock size={16} /> Audit trail</h5>
                   </div>
                   <div className="relative pl-6 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-outline-variant/30">
-                    {[
-                      { action: 'Ticket Created', user: 'Mark T.', time: 'Oct 24, 10:00 AM', status: 'Pending' },
-                      { action: 'Assigned to Admin', user: 'System', time: 'Oct 24, 10:05 AM', status: 'In Progress' },
-                      { action: 'Status Changed to Waiting parts', user: 'Admin', time: 'Oct 24, 03:20 PM', status: 'Waiting for Parts' },
-                    ].map((h, i) => (
-                      <div key={i} className="relative">
+                    {(localTicket.history ?? []).length === 0 ? (
+                      <p className="text-[11px] text-outline italic text-center py-4">No history yet.</p>
+                    ) : (localTicket.history ?? []).map((h) => (
+                      <div key={h.id} className="relative">
                         <div className="absolute -left-6 top-1.5 w-4 h-4 rounded-full border-2 border-primary bg-white z-10"></div>
                         <div>
                           <p className="text-[13px] font-bold text-primary">{h.action}</p>
-                          <p className="text-[11px] text-secondary font-medium">{h.user} • {h.time}</p>
-                          <span className="inline-block mt-2 px-1.5 py-0.5 rounded-md bg-surface-container text-[9px] font-black uppercase text-outline">{h.status}</span>
+                          <p className="text-[11px] text-secondary font-medium">{h.user} • {formatTimestamp(h.timestamp)}</p>
                         </div>
                       </div>
                     ))}
@@ -360,12 +468,12 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
                         <History size={14} /> Notification History
                       </h6>
                       <div className="text-[9px] font-black text-outline uppercase tracking-widest">
-                        {MOCK_NOTIFICATIONS.filter(n => n.ticketId === ticket.id).length} Entries
+                        {MOCK_NOTIFICATIONS.filter(n => n.ticketId === localTicket.id).length} Entries
                       </div>
                     </div>
                     
                     <div className="relative pl-6 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-outline-variant/30">
-                      {MOCK_NOTIFICATIONS.filter(n => n.ticketId === ticket.id).map((notif) => (
+                      {MOCK_NOTIFICATIONS.filter(n => n.ticketId === localTicket.id).map((notif) => (
                         <div key={notif.id} className="relative group">
                           {/* Dot */}
                           <div className={`absolute -left-6 top-1.5 w-4 h-4 rounded-full border-2 bg-white z-10 flex items-center justify-center transition-all group-hover:scale-110 shadow-sm ${
@@ -398,7 +506,7 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
                           </div>
                         </div>
                       ))}
-                      {MOCK_NOTIFICATIONS.filter(n => n.ticketId === ticket.id).length === 0 && (
+                      {MOCK_NOTIFICATIONS.filter(n => n.ticketId === localTicket.id).length === 0 && (
                         <p className="text-[10px] text-outline text-center py-4 italic font-medium tracking-widest">No notification logs found for this ticket.</p>
                       )}
                     </div>
@@ -411,15 +519,15 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
                     </div>
                     <div className="p-8 space-y-6 font-sans">
                       <div className="space-y-1 pb-4 border-b border-outline-variant/50">
-                        <p className="text-[12px]"><span className="font-bold text-outline uppercase w-20 inline-block">Subject:</span> <span className="text-primary font-bold">Repair Update - {ticket.id}</span></p>
-                        <p className="text-[12px]"><span className="font-bold text-outline uppercase w-20 inline-block">To:</span> <span className="text-primary font-bold">{ticket.employeeEmail}</span></p>
+                        <p className="text-[12px]"><span className="font-bold text-outline uppercase w-20 inline-block">Subject:</span> <span className="text-primary font-bold">Repair Update - {localTicket.id}</span></p>
+                        <p className="text-[12px]"><span className="font-bold text-outline uppercase w-20 inline-block">To:</span> <span className="text-primary font-bold">{localTicket.employeeEmail}</span></p>
                       </div>
                       <div className="space-y-4">
-                        <p className="text-sm font-medium">Hello {ticket.employeeName},</p>
-                        <p className="text-sm text-secondary leading-relaxed">This is an update regarding your repair request for the <span className="font-bold text-primary">{ticket.deviceName}</span>.</p>
+                        <p className="text-sm font-medium">Hello {localTicket.employeeName},</p>
+                        <p className="text-sm text-secondary leading-relaxed">This is an update regarding your repair request for the <span className="font-bold text-primary">{localTicket.deviceName}</span>.</p>
                         <div className="bg-white border-2 border-outline-variant p-4 rounded-xl flex items-center justify-between">
                           <span className="text-xs font-black uppercase text-outline">Current Status</span>
-                          <span className="px-3 py-1 rounded-lg bg-primary text-white font-black uppercase text-[10px] tracking-widest">{ticket.status}</span>
+                          <span className="px-3 py-1 rounded-lg bg-primary text-white font-black uppercase text-[10px] tracking-widest">{localTicket.status}</span>
                         </div>
                         <div className="p-4 bg-tertiary-container/10 border border-tertiary/20 rounded-xl space-y-2">
                           <p className="text-[9px] font-black text-tertiary uppercase tracking-widest">Technician Note:</p>
@@ -460,23 +568,30 @@ function TicketDetailModal({ ticket, onClose }: { ticket: RepairTicket, onClose:
               )}
             </div>
 
-            <footer className="px-8 py-5 border-t border-outline-variant bg-surface-container-low shrink-0 flex justify-between items-center overflow-hidden">
-              <div className="flex items-center gap-4">
-                <span className="text-[10px] font-black text-secondary uppercase tracking-widest">Quick Status Shift</span>
-                <div className="flex gap-2">
-                  {['Pending', 'In Progress', 'Waiting for Parts', 'Completed'].map(s => (
-                    <button 
-                      key={s}
-                      className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase border transition-all ${
-                        ticket.status === s ? 'bg-primary text-white border-primary shadow-lg' : 'bg-white text-secondary border-outline-variant hover:border-primary'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
+            <footer className="px-8 py-5 border-t border-outline-variant bg-surface-container-low shrink-0 space-y-2">
+              {updateError && (
+                <p className="text-[10px] text-error font-bold text-center">{updateError}</p>
+              )}
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-4">
+                  <span className="text-[10px] font-black text-secondary uppercase tracking-widest">Quick Status Shift</span>
+                  <div className="flex gap-2">
+                    {(['Pending', 'In Progress', 'Waiting for Parts', 'Completed'] as RepairTicket['status'][]).map(s => (
+                      <button
+                        key={s}
+                        onClick={() => handleStatusShift(s)}
+                        disabled={isUpdating}
+                        className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase border transition-all disabled:opacity-50 disabled:cursor-not-allowed ${
+                          localTicket.status === s ? 'bg-primary text-white border-primary shadow-lg' : 'bg-white text-secondary border-outline-variant hover:border-primary'
+                        }`}
+                      >
+                        {s}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                <button onClick={handleDelete} disabled={isUpdating} className="text-xs font-bold text-error uppercase hover:underline disabled:opacity-50 disabled:cursor-not-allowed">Delete Ticket</button>
               </div>
-              <button className="text-xs font-bold text-error uppercase hover:underline">Delete Ticket</button>
             </footer>
           </div>
         </div>

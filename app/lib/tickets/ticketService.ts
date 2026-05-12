@@ -42,6 +42,8 @@ export interface TicketRepository {
     nextStatus: RepairTicket['status'],
     actorEmail: string
   ): Promise<{ ticket: RepairTicket; changed: boolean }>;
+  addNote(ticketId: string, note: TicketNote): Promise<RepairTicket>;
+  deleteById(ticketId: string): Promise<void>;
 }
 
 interface TicketStore {
@@ -213,6 +215,35 @@ export async function transitionTicketStatusWithActor(
     normalizeTicketStatus(nextStatus),
     normalizeEmail(actorEmail)
   );
+}
+
+export async function addTicketNote(
+  ticketId: string,
+  content: string,
+  authorEmail = 'admin@repairlink.local',
+  repository: TicketRepository = getDefaultTicketRepository()
+): Promise<RepairTicket> {
+  const normalized = content.trim();
+
+  if (!normalized) {
+    throw new TicketValidationError('Note content is required.');
+  }
+
+  const note: TicketNote = {
+    id: randomUUID(),
+    author: normalizeEmail(authorEmail),
+    content: normalized,
+    timestamp: new Date().toISOString(),
+  };
+
+  return repository.addNote(normalizeTicketId(ticketId), note);
+}
+
+export async function deleteTicketById(
+  ticketId: string,
+  repository: TicketRepository = getDefaultTicketRepository()
+): Promise<void> {
+  return repository.deleteById(normalizeTicketId(ticketId));
 }
 
 export function getDefaultTicketRepository() {
@@ -454,6 +485,60 @@ export class MySqlTicketRepository implements TicketRepository {
       connection.release();
     }
   }
+
+  async addNote(ticketId: string, note: TicketNote): Promise<RepairTicket> {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [rows] = await connection.query<TicketRow[]>(
+        `SELECT id, notes_json, history_json FROM repair_tickets WHERE id = ? FOR UPDATE`,
+        [ticketId]
+      );
+
+      if (rows.length === 0) {
+        throw new TicketNotFoundError(ticketId);
+      }
+
+      const existingNotes = parseTicketNotes(rows[0].notes_json);
+      const existingHistory = parseTicketHistory(rows[0].history_json);
+      const historyEvent: TicketHistoryEvent = {
+        id: randomUUID(),
+        action: 'Note Added',
+        user: note.author,
+        timestamp: note.timestamp,
+      };
+
+      await connection.execute<ResultSetHeader>(
+        `UPDATE repair_tickets SET notes_json = ?, history_json = ?, updated_at = NOW() WHERE id = ?`,
+        [
+          JSON.stringify([...existingNotes, note]),
+          JSON.stringify([...existingHistory, historyEvent]),
+          ticketId,
+        ]
+      );
+
+      await connection.commit();
+      return this.findById(ticketId);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async deleteById(ticketId: string): Promise<void> {
+    const [result] = await this.pool.execute<ResultSetHeader>(
+      `DELETE FROM repair_tickets WHERE id = ?`,
+      [ticketId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new TicketNotFoundError(ticketId);
+    }
+  }
 }
 
 export class FileTicketRepository implements TicketRepository {
@@ -555,6 +640,48 @@ export class FileTicketRepository implements TicketRepository {
       await this.writeStore({ tickets });
 
       return { ticket: updated, changed: true };
+    });
+  }
+
+  async addNote(ticketId: string, note: TicketNote): Promise<RepairTicket> {
+    return this.enqueueWrite(async () => {
+      const store = await this.readStore();
+      const index = store.tickets.findIndex((t) => sameTicketId(t.id, ticketId));
+
+      if (index === -1) {
+        throw new TicketNotFoundError(ticketId);
+      }
+
+      const current = store.tickets[index];
+      const historyEvent: TicketHistoryEvent = {
+        id: randomUUID(),
+        action: 'Note Added',
+        user: note.author,
+        timestamp: note.timestamp,
+      };
+      const updated: RepairTicket = {
+        ...current,
+        notes: [...(current.notes ?? []), note],
+        history: [...(current.history ?? []), historyEvent],
+      };
+
+      const tickets = store.tickets.slice();
+      tickets[index] = updated;
+      await this.writeStore({ tickets });
+      return updated;
+    });
+  }
+
+  async deleteById(ticketId: string): Promise<void> {
+    await this.enqueueWrite(async () => {
+      const store = await this.readStore();
+      const index = store.tickets.findIndex((t) => sameTicketId(t.id, ticketId));
+
+      if (index === -1) {
+        throw new TicketNotFoundError(ticketId);
+      }
+
+      await this.writeStore({ tickets: store.tickets.filter((_, i) => i !== index) });
     });
   }
 

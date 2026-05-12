@@ -82,6 +82,15 @@ export default function App({ initialView = 'login' }: { initialView?: ViewType 
     setCurrentView('tickets');
   }
 
+  function handleTicketUpdated(ticket: RepairTicket) {
+    setTickets((current) => current.map((t) => (t.id === ticket.id ? ticket : t)));
+  }
+
+  function handleTicketDeleted(ticketId: string) {
+    setTickets((current) => current.filter((t) => t.id !== ticketId));
+    setSelectedTicketId(null);
+  }
+
   if (currentView === 'login') return <LoginView onLogin={() => setCurrentView('dashboard')} />;
 
   async function handleLogout() {
@@ -162,7 +171,7 @@ export default function App({ initialView = 'login' }: { initialView?: ViewType 
             <AnimatePresence mode="wait">
               {currentView === 'dashboard' && <Dashboard onTicketClick={(id) => { setSelectedTicketId(id); setCurrentView('tickets'); }} key="dashboard" />}
               {currentView === 'inventory' && <Inventory key="inventory" devices={devices} onDevicesChange={setDevices} />}
-              {currentView === 'tickets' && <TicketManagementCenter tickets={tickets} selectedId={selectedTicketId} onSelectTicket={setSelectedTicketId} key="tickets" />}
+              {currentView === 'tickets' && <TicketManagementCenter tickets={tickets} selectedId={selectedTicketId} onSelectTicket={setSelectedTicketId} onTicketUpdated={handleTicketUpdated} onTicketDeleted={handleTicketDeleted} key="tickets" />}
               {currentView === 'reports' && <ReportsView key="reports" />}
               {currentView === 'create-request' && (
                 <CreateRequestForm
