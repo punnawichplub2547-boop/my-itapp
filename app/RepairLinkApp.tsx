@@ -15,11 +15,27 @@ import ReportsView from './views/ReportsView';
 import CreateRequestForm from './views/CreateRequestForm';
 import AddDeviceForm from './views/AddDeviceForm';
 
-export default function App({ initialView = 'login' }: { initialView?: ViewType }) {
+const VIEW_TO_PATH: Record<ViewType, string> = {
+  dashboard: '/dashboard',
+  'create-request': '/dashboard/create-repair-request',
+  tickets: '/dashboard/repair-status',
+  inventory: '/dashboard/device-inventory',
+  'add-device': '/dashboard/add-new-device',
+  reports: '/dashboard/reports',
+  login: '/',
+};
+
+export default function App({
+  initialView = 'login',
+  initialTicketId,
+}: {
+  initialView?: ViewType;
+  initialTicketId?: string;
+}) {
   const router = useRouter();
   const [currentView, setCurrentView] = useState<ViewType>(initialView);
   const [isSidebarOpen] = useState(true);
-  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(initialTicketId ?? null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [tickets, setTickets] = useState<RepairTicket[]>([]);
 
@@ -79,7 +95,7 @@ export default function App({ initialView = 'login' }: { initialView?: ViewType 
 
   function handleTicketCreated(ticket: RepairTicket) {
     setTickets((current) => [ticket, ...current]);
-    setCurrentView('tickets');
+    router.push(VIEW_TO_PATH.tickets);
   }
 
   function handleTicketUpdated(ticket: RepairTicket) {
@@ -91,7 +107,7 @@ export default function App({ initialView = 'login' }: { initialView?: ViewType 
     setSelectedTicketId(null);
   }
 
-  if (currentView === 'login') return <LoginView onLogin={() => setCurrentView('dashboard')} />;
+  if (currentView === 'login') return <LoginView onLogin={() => router.push(VIEW_TO_PATH.dashboard)} />;
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -118,12 +134,12 @@ export default function App({ initialView = 'login' }: { initialView?: ViewType 
         </div>
 
         <nav className="flex-1 p-3 space-y-1 overflow-y-auto custom-scrollbar">
-          <NavItem icon={<LayoutDashboard />} label="Dashboard" active={currentView === 'dashboard'} onClick={() => setCurrentView('dashboard')} collapsed={!isSidebarOpen} />
-          <NavItem icon={<PlusSquare />} label="Create Repair Request" active={currentView === 'create-request'} onClick={() => setCurrentView('create-request')} collapsed={!isSidebarOpen} />
-          <NavItem icon={<History />} label="Repair Status" active={currentView === 'tickets'} onClick={() => setCurrentView('tickets')} collapsed={!isSidebarOpen} />
-          <NavItem icon={<Package />} label="Device Inventory" active={currentView === 'inventory'} onClick={() => setCurrentView('inventory')} collapsed={!isSidebarOpen} />
-          <NavItem icon={<PlusCircle />} label="Add New Device" active={currentView === 'add-device'} onClick={() => setCurrentView('add-device')} collapsed={!isSidebarOpen} />
-          <NavItem icon={<BarChart />} label="Reports" active={currentView === 'reports'} onClick={() => setCurrentView('reports')} collapsed={!isSidebarOpen} />
+          <NavItem icon={<LayoutDashboard />} label="Dashboard" active={currentView === 'dashboard'} onClick={() => router.push(VIEW_TO_PATH.dashboard)} collapsed={!isSidebarOpen} />
+          <NavItem icon={<PlusSquare />} label="Create Repair Request" active={currentView === 'create-request'} onClick={() => router.push(VIEW_TO_PATH['create-request'])} collapsed={!isSidebarOpen} />
+          <NavItem icon={<History />} label="Repair Status" active={currentView === 'tickets'} onClick={() => router.push(VIEW_TO_PATH.tickets)} collapsed={!isSidebarOpen} />
+          <NavItem icon={<Package />} label="Device Inventory" active={currentView === 'inventory'} onClick={() => router.push(VIEW_TO_PATH.inventory)} collapsed={!isSidebarOpen} />
+          <NavItem icon={<PlusCircle />} label="Add New Device" active={currentView === 'add-device'} onClick={() => router.push(VIEW_TO_PATH['add-device'])} collapsed={!isSidebarOpen} />
+          <NavItem icon={<BarChart />} label="Reports" active={currentView === 'reports'} onClick={() => router.push(VIEW_TO_PATH.reports)} collapsed={!isSidebarOpen} />
         </nav>
 
         <div className="p-3 border-t border-white/10 space-y-1">
@@ -169,25 +185,42 @@ export default function App({ initialView = 'login' }: { initialView?: ViewType 
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <div className="max-w-7xl mx-auto">
             <AnimatePresence mode="wait">
-              {currentView === 'dashboard' && <Dashboard onTicketClick={(id) => { setSelectedTicketId(id); setCurrentView('tickets'); }} devices={devices} tickets={tickets} key="dashboard" />}
+              {currentView === 'dashboard' && (
+                <Dashboard
+                  key="dashboard"
+                  devices={devices}
+                  tickets={tickets}
+                  onTicketClick={(id) => router.push(`${VIEW_TO_PATH.tickets}?ticket=${id}`)}
+                />
+              )}
               {currentView === 'inventory' && <Inventory key="inventory" devices={devices} onDevicesChange={setDevices} />}
-              {currentView === 'tickets' && <TicketManagementCenter tickets={tickets} selectedId={selectedTicketId} onSelectTicket={setSelectedTicketId} onTicketUpdated={handleTicketUpdated} onTicketDeleted={handleTicketDeleted} key="tickets" />}
+              {currentView === 'tickets' && (
+                <TicketManagementCenter
+                  key="tickets"
+                  tickets={tickets}
+                  selectedId={selectedTicketId}
+                  onSelectTicket={setSelectedTicketId}
+                  onTicketUpdated={handleTicketUpdated}
+                  onTicketDeleted={handleTicketDeleted}
+                />
+              )}
               {currentView === 'reports' && <ReportsView key="reports" />}
               {currentView === 'create-request' && (
                 <CreateRequestForm
                   key="create-request"
                   devices={devices}
-                  onBack={() => setCurrentView('dashboard')}
+                  tickets={tickets}
+                  onBack={() => router.push(VIEW_TO_PATH.dashboard)}
                   onTicketCreated={handleTicketCreated}
                 />
               )}
               {currentView === 'add-device' && (
                 <AddDeviceForm
                   key="add-device"
-                  onBack={() => setCurrentView('dashboard')}
+                  onBack={() => router.push(VIEW_TO_PATH.dashboard)}
                   onDeviceCreated={(device) => {
                     setDevices((currentDevices) => upsertDevice(currentDevices, device));
-                    setCurrentView('inventory');
+                    router.push(VIEW_TO_PATH.inventory);
                   }}
                 />
               )}

@@ -49,10 +49,12 @@ export function listRequestAssignees(devices: Device[], department: string, mode
 
 export default function CreateRequestForm({
   devices = [],
+  tickets = [],
   onBack,
   onTicketCreated,
 }: {
   devices?: Device[];
+  tickets?: RepairTicket[];
   onBack: () => void;
   onTicketCreated?: (ticket: RepairTicket) => void;
 }) {
@@ -66,6 +68,10 @@ export default function CreateRequestForm({
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const openTickets = tickets.filter(t => t.status !== 'Completed' && t.status !== 'Closed');
+  const criticalOpenTickets = openTickets.filter(t => t.priority === 'Critical');
+  const featuredTicket = criticalOpenTickets[0] ?? openTickets[0] ?? null;
 
   async function handleSubmit() {
     setSubmitError(null);
@@ -305,23 +311,29 @@ export default function CreateRequestForm({
               <div className="grid grid-cols-2 gap-4">
                 <div className="bg-white/10 p-4 rounded-xl text-center border border-white/5">
                   <p className="text-[9px] font-bold text-on-primary-container uppercase tracking-widest mb-1">Open Tickets</p>
-                  <p className="text-3xl font-bold">24</p>
+                  <p className="text-3xl font-bold">{openTickets.length}</p>
                 </div>
                 <div className="bg-white/10 p-4 rounded-xl text-center border border-white/5">
                   <p className="text-[9px] font-bold text-on-primary-container uppercase tracking-widest mb-1">Critical</p>
-                  <p className="text-3xl font-bold text-error">3</p>
+                  <p className="text-3xl font-bold text-error">{criticalOpenTickets.length}</p>
                 </div>
               </div>
               <div className="space-y-2">
-                <div className="bg-white/5 p-3 rounded-xl border border-white/5 group hover:bg-white/10 cursor-pointer transition-all">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className="text-[10px] font-mono font-bold text-on-primary-container">TK-9012</span>
-                    <span className="text-[9px] font-bold bg-error text-white px-2 py-0.5 rounded-full uppercase">Critical</span>
+                {featuredTicket ? (
+                  <div className="bg-white/5 p-3 rounded-xl border border-white/5 group hover:bg-white/10 cursor-pointer transition-all">
+                    <div className="flex justify-between items-center mb-1">
+                      <span className="text-[10px] font-mono font-bold text-on-primary-container">{featuredTicket.id}</span>
+                      <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase ${featuredTicket.priority === 'Critical' ? 'bg-error text-white' : 'bg-white/20 text-white'}`}>
+                        {featuredTicket.priority}
+                      </span>
+                    </div>
+                    <p className="text-xs font-bold truncate">{featuredTicket.description.split('.')[0]}</p>
                   </div>
-                  <p className="text-xs font-bold truncate">Server Room UPS Failure</p>
-                </div>
+                ) : (
+                  <p className="text-[10px] text-on-primary-container/60 italic text-center py-2">No open tickets in the queue.</p>
+                )}
               </div>
-              <button className="w-full text-center py-2 text-[10px] font-bold uppercase tracking-widest text-on-primary-container hover:text-white transition-colors">View Dashboard →</button>
+              <button onClick={onBack} className="w-full text-center py-2 text-[10px] font-bold uppercase tracking-widest text-on-primary-container hover:text-white transition-colors">View Dashboard →</button>
             </div>
           </section>
         </div>
