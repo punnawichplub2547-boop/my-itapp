@@ -3,17 +3,24 @@
 import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Calendar, Laptop, Server, Printer, Smartphone, Wrench, ShieldCheck, CheckCircle2, AlertTriangle, Clock, ShieldAlert } from 'lucide-react';
-import { MOCK_TICKETS } from '../data/mockData';
 import StatCard from '../components/StatCard';
 import { getWarrantyStatus } from '../utils/status';
-import type { Device } from '../types';
+import type { Device, RepairTicket } from '../types';
+
+function formatDate(ts: string) {
+  const d = new Date(ts);
+  if (isNaN(d.getTime())) return ts;
+  return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+}
 
 export default function Dashboard({
   onTicketClick,
   devices,
+  tickets,
 }: {
   onTicketClick: (id: string) => void;
   devices?: Device[];
+  tickets?: RepairTicket[];
 }) {
   const [activityFilter, setActivityFilter] = useState('All');
   const [fetchedDevices, setFetchedDevices] = useState<Device[]>([]);
@@ -49,9 +56,10 @@ export default function Dashboard({
     };
   }, [devices]);
 
-  const filteredTickets = activityFilter === 'All' 
-    ? MOCK_TICKETS 
-    : MOCK_TICKETS.filter(t => t.status.toLowerCase().includes(activityFilter.toLowerCase()));
+  const allTickets = tickets ?? [];
+  const filteredTickets = activityFilter === 'All'
+    ? allTickets
+    : allTickets.filter(t => t.status.toLowerCase().includes(activityFilter.toLowerCase()));
 
   const fleetDevices = devices ?? fetchedDevices;
   const totalDevices = fleetDevices.length;
@@ -137,7 +145,7 @@ export default function Dashboard({
                     ticket.status === 'Waiting for Parts' ? 'bg-orange-100 text-orange-700' :
                     ticket.status === 'Completed' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'
                   }`}>{ticket.status}</span>
-                  <span className="text-[10px] font-mono text-outline font-medium">{ticket.createdAt}</span>
+                  <span className="text-[10px] font-mono text-outline font-medium">{formatDate(ticket.createdAt)}</span>
                 </div>
               </div>
             ))}

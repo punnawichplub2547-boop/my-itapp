@@ -169,7 +169,7 @@ export default function App({ initialView = 'login' }: { initialView?: ViewType 
         <div className="flex-1 overflow-y-auto p-8 custom-scrollbar">
           <div className="max-w-7xl mx-auto">
             <AnimatePresence mode="wait">
-              {currentView === 'dashboard' && <Dashboard onTicketClick={(id) => { setSelectedTicketId(id); setCurrentView('tickets'); }} key="dashboard" />}
+              {currentView === 'dashboard' && <Dashboard onTicketClick={(id) => { setSelectedTicketId(id); setCurrentView('tickets'); }} devices={devices} tickets={tickets} key="dashboard" />}
               {currentView === 'inventory' && <Inventory key="inventory" devices={devices} onDevicesChange={setDevices} />}
               {currentView === 'tickets' && <TicketManagementCenter tickets={tickets} selectedId={selectedTicketId} onSelectTicket={setSelectedTicketId} onTicketUpdated={handleTicketUpdated} onTicketDeleted={handleTicketDeleted} key="tickets" />}
               {currentView === 'reports' && <ReportsView key="reports" />}
