@@ -1,4 +1,7 @@
 import type { Device } from '../types';
+import { getWarrantyLifecycle, parseDeviceDate } from '../lib/devices/warrantyAlerts';
+
+export { parseDeviceDate } from '../lib/devices/warrantyAlerts';
 
 export type DeviceDetailTabKey =
   | 'hardware-os'
@@ -12,7 +15,7 @@ export interface DeviceDetailTab {
 }
 
 export interface WarrantySnapshot {
-  status: 'active' | 'expired' | 'unknown';
+  status: 'active' | 'expiring-soon' | 'expired' | 'unknown';
   headline: string;
   detail: string;
   expirationText: string;
@@ -61,36 +64,37 @@ export function getDeviceDetailHeroSubtitle(device: Device) {
 }
 
 export function getWarrantySnapshot(device: Device, now = new Date()): WarrantySnapshot {
-  const expiryDate =
-    parseDeviceDate(device.expireDateSecondary) ?? parseDeviceDate(device.expireDatePrimary);
+  const lifecycle = getWarrantyLifecycle(device, now);
+  const expiryDate = lifecycle.expiryDate;
 
   if (!expiryDate) {
     return {
       status: 'unknown',
       headline: 'Warranty status unavailable',
       detail: 'No parseable lifecycle date is stored for this asset yet.',
-      expirationText: device.expireDateSecondary || device.expireDatePrimary || 'Not recorded',
+      expirationText: device.expireDatePrimary || device.expireDateSecondary || 'Not recorded',
       daysRemainingText: 'Unknown',
     };
   }
 
-  const normalizedNow = new Date(now);
-  normalizedNow.setUTCHours(0, 0, 0, 0);
-
   const normalizedExpiry = new Date(expiryDate);
   normalizedExpiry.setUTCHours(0, 0, 0, 0);
-
-  const daysRemaining = Math.round(
-    (normalizedExpiry.getTime() - normalizedNow.getTime()) / (1000 * 60 * 60 * 24)
-  );
-  const isExpired = daysRemaining < 0;
+  const daysRemaining = lifecycle.daysRemaining ?? 0;
 
   return {
-    status: isExpired ? 'expired' : 'active',
-    headline: isExpired ? 'Warranty status: expired' : 'Warranty status: active',
-    detail: isExpired
-      ? 'Support for this asset has expired. Review lifecycle risk before the next hardware issue.'
-      : 'This asset still has active lifecycle coverage based on the stored expiration date.',
+    status: lifecycle.state,
+    headline:
+      lifecycle.state === 'expired'
+        ? 'Warranty status: expired'
+        : lifecycle.state === 'expiring-soon'
+        ? 'Warranty status: expiring soon'
+        : 'Warranty status: active',
+    detail:
+      lifecycle.state === 'expired'
+        ? 'Support for this asset has expired. Review lifecycle risk before the next hardware issue.'
+        : lifecycle.state === 'expiring-soon'
+        ? 'Warranty coverage is nearing its end within the next 30 days. Review renewal or replacement plans soon.'
+        : 'This asset still has active lifecycle coverage based on the stored expiration date.',
     expirationText: formatIsoDate(normalizedExpiry),
     daysRemainingText: `${daysRemaining} days`,
   };
@@ -145,36 +149,6 @@ export function deriveAssignmentIdentity(assignedTo: string) {
 export function formatDateValue(value: string | undefined) {
   const parsed = parseDeviceDate(value);
   return parsed ? formatIsoDate(parsed) : value?.trim() || 'Not recorded';
-}
-
-export function parseDeviceDate(value: string | undefined) {
-  const normalized = value?.trim();
-
-  if (!normalized || normalized === '-' || normalized.toUpperCase() === 'N/A') {
-    return undefined;
-  }
-
-  if (/^\d{5}$/.test(normalized)) {
-    const serial = Number(normalized);
-    const utcDays = Math.floor(serial - 25569);
-    const utcMilliseconds = utcDays * 86400 * 1000;
-    return new Date(utcMilliseconds);
-  }
-
-  if (/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
-    const parsed = new Date(`${normalized}T00:00:00Z`);
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-  }
-
-  const dayMonthYearMatch = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-
-  if (dayMonthYearMatch) {
-    const [, day, month, year] = dayMonthYearMatch;
-    const parsed = new Date(Date.UTC(Number(year), Number(month) - 1, Number(day)));
-    return Number.isNaN(parsed.getTime()) ? undefined : parsed;
-  }
-
-  return undefined;
 }
 
 function formatIsoDate(value: Date) {

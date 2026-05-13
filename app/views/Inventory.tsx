@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import type { Device } from '../types';
 import { getDeviceStatusBadgeColor, getDeviceStatusColor } from '../utils/status';
+import { downloadCsv } from '../utils/csv';
 import {
   buildAssignmentHistory,
   buildRepairLog,
@@ -30,6 +31,7 @@ import {
   getDeviceDetailHeroSubtitle,
   getDeviceDetailHeroTitle,
   getWarrantySnapshot,
+  parseDeviceDate,
 } from './inventoryDetail';
 
 export const DEVICE_STATUS_OPTIONS: Device['status'][] = ['Active', 'Inactive', 'Out of Service'];
@@ -63,6 +65,56 @@ export function updateDeviceAssignment(devices: Device[], deviceId: string, assi
   );
 }
 
+const DEVICE_CSV_HEADERS = [
+  'No',
+  'Name',
+  'IP Address',
+  'Dept.',
+  'User Log on',
+  'TYPE',
+  'Model',
+  'HDD',
+  'RAM',
+  'CPU',
+  'Install Date',
+  'Expire Date',
+  'Expire Date',
+  'Waranty',
+  'Year',
+  'OS',
+  'OS Licens',
+  'MS Office V.',
+];
+
+function formatCsvDate(value: string | undefined): string {
+  if (!value?.trim() || value === '-') return '';
+  const parsed = parseDeviceDate(value);
+  return parsed ? parsed.toISOString().slice(0, 10) : value.trim();
+}
+
+function deviceToCsvRow(device: Device, index: number): string[] {
+  return [
+    String(index + 1),
+    device.deviceId,
+    device.ipAddress,
+    device.department,
+    device.assignedTo,
+    device.deviceType,
+    device.model,
+    device.hdd,
+    device.ram,
+    device.cpu,
+    formatCsvDate(device.installDate),
+    formatCsvDate(device.expireDatePrimary),
+    formatCsvDate(device.expireDateSecondary),
+    device.warranty,
+    device.yearValue,
+    device.os,
+    device.osLicense,
+    device.msOfficeVersion,
+  ];
+}
+
 export function paginateDevices(devices: Device[], page: number, pageSize = DEVICE_PAGE_SIZE) {
   const safePage = Math.max(1, page);
   const startIndex = (safePage - 1) * pageSize;
@@ -80,24 +132,26 @@ export function clampInventoryPage(page: number, totalPages: number) {
 export default function Inventory({
   devices = [],
   onDevicesChange,
+  initialSearchQuery = '',
+  initialSelectedDeviceId,
 }: {
   devices?: Device[];
   onDevicesChange?: (devices: Device[]) => void;
+  initialSearchQuery?: string;
+  initialSelectedDeviceId?: string;
 }) {
   const [internalDevices, setInternalDevices] = useState(devices);
-  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(
+    initialSelectedDeviceId ?? null
+  );
   const [targetDeviceId, setTargetDeviceId] = useState<string | null>(null);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
   const [departmentFilter, setDepartmentFilter] = useState('All');
   const [deviceTypeFilter, setDeviceTypeFilter] = useState('All');
   const [osFilter, setOsFilter] = useState('All');
   const [currentPage, setCurrentPage] = useState(1);
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
   const [inventoryError, setInventoryError] = useState('');
-
-  useEffect(() => {
-    setInternalDevices(devices);
-  }, [devices]);
 
   const currentDevices = onDevicesChange ? devices : internalDevices;
 
@@ -150,19 +204,12 @@ export default function Inventory({
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredDevices.length / DEVICE_PAGE_SIZE));
-  const paginatedDevices = paginateDevices(filteredDevices, currentPage, DEVICE_PAGE_SIZE);
-  const firstVisibleItem = filteredDevices.length === 0 ? 0 : (currentPage - 1) * DEVICE_PAGE_SIZE + 1;
+  const visiblePage = clampInventoryPage(currentPage, totalPages);
+  const paginatedDevices = paginateDevices(filteredDevices, visiblePage, DEVICE_PAGE_SIZE);
+  const firstVisibleItem = filteredDevices.length === 0 ? 0 : (visiblePage - 1) * DEVICE_PAGE_SIZE + 1;
   const lastVisibleItem = filteredDevices.length === 0
     ? 0
-    : Math.min(currentPage * DEVICE_PAGE_SIZE, filteredDevices.length);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchQuery, departmentFilter, deviceTypeFilter, osFilter]);
-
-  useEffect(() => {
-    setCurrentPage((page) => clampInventoryPage(page, totalPages));
-  }, [totalPages]);
+    : Math.min(visiblePage * DEVICE_PAGE_SIZE, filteredDevices.length);
 
   const selectedDevice =
     currentDevices.find((device) => device.deviceId === selectedDeviceId) ?? null;
@@ -230,6 +277,14 @@ export default function Inventory({
     }
   }
 
+  function handleExportCsv() {
+    downloadCsv(
+      DEVICE_CSV_HEADERS,
+      filteredDevices.map((device, i) => deviceToCsvRow(device, i)),
+      `device-inventory-${new Date().toISOString().slice(0, 10)}.csv`
+    );
+  }
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex h-full flex-col space-y-8">
       <div className="flex items-end justify-between shrink-0">
@@ -237,7 +292,11 @@ export default function Inventory({
           <h2 className="text-3xl font-black tracking-tight text-primary">IT Asset Inventory</h2>
           <p className="font-medium text-secondary">MySQL-backed fleet records from the shared device API.</p>
         </div>
-        <button className="flex items-center gap-2 rounded-xl border border-outline-variant bg-white px-5 py-3 text-[11px] font-black uppercase tracking-widest text-primary shadow-sm transition-all hover:border-primary">
+        <button
+          onClick={handleExportCsv}
+          disabled={filteredDevices.length === 0}
+          className="flex items-center gap-2 rounded-xl border border-outline-variant bg-white px-5 py-3 text-[11px] font-black uppercase tracking-widest text-primary shadow-sm transition-all hover:border-primary disabled:opacity-40 disabled:cursor-not-allowed"
+        >
           <FileSpreadsheet className="h-4 w-4" /> Export Report
         </button>
       </div>
@@ -248,7 +307,10 @@ export default function Inventory({
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-outline" />
             <input
               value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
+              onChange={(event) => {
+                setSearchQuery(event.target.value);
+                setCurrentPage(1);
+              }}
               placeholder="Search Device ID, asset no, IP, model, user logon..."
               className="w-full rounded-xl border border-outline-variant bg-surface-container-low py-3 pl-12 pr-4 text-sm font-medium outline-none transition-all focus:border-primary"
             />
@@ -257,19 +319,28 @@ export default function Inventory({
             label="Department"
             value={departmentFilter}
             options={departmentOptions}
-            onChange={setDepartmentFilter}
+            onChange={(value) => {
+              setDepartmentFilter(value);
+              setCurrentPage(1);
+            }}
           />
           <FilterSelect
             label="Device Type"
             value={deviceTypeFilter}
             options={deviceTypeOptions}
-            onChange={setDeviceTypeFilter}
+            onChange={(value) => {
+              setDeviceTypeFilter(value);
+              setCurrentPage(1);
+            }}
           />
           <FilterSelect
             label="Operating System"
             value={osFilter}
             options={osOptions}
-            onChange={setOsFilter}
+            onChange={(value) => {
+              setOsFilter(value);
+              setCurrentPage(1);
+            }}
           />
         </div>
         {inventoryError && (
@@ -396,18 +467,18 @@ export default function Inventory({
               <button
                 type="button"
                 onClick={() => setCurrentPage((page) => clampInventoryPage(page - 1, totalPages))}
-                disabled={currentPage === 1}
+                disabled={visiblePage === 1}
                 className="rounded-lg border border-outline-variant bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-primary transition-all hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Previous
               </button>
               <span className="min-w-24 text-center text-[10px] font-black uppercase tracking-[0.18em] text-secondary">
-                Page {currentPage} of {totalPages}
+                Page {visiblePage} of {totalPages}
               </span>
               <button
                 type="button"
                 onClick={() => setCurrentPage((page) => clampInventoryPage(page + 1, totalPages))}
-                disabled={currentPage === totalPages}
+                disabled={visiblePage === totalPages}
                 className="rounded-lg border border-outline-variant bg-white px-3 py-2 text-[10px] font-black uppercase tracking-widest text-primary transition-all hover:border-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Next
@@ -420,6 +491,7 @@ export default function Inventory({
       <AnimatePresence>
         {selectedDevice && (
           <DeviceDetailModal
+            key={selectedDevice.deviceId}
             device={selectedDevice}
             onClose={() => setSelectedDeviceId(null)}
             onEditAssignment={(deviceId) => {
@@ -432,6 +504,7 @@ export default function Inventory({
         )}
         {isAssignModalOpen && targetDevice && (
           <AssignmentModal
+            key={targetDevice.deviceId}
             device={targetDevice}
             onClose={() => {
               setIsAssignModalOpen(false);
@@ -500,11 +573,6 @@ export function DeviceDetailModal({
   const warrantySnapshot = getWarrantySnapshot(device);
   const assignmentHistory = buildAssignmentHistory(device);
   const repairLogEntries = buildRepairLog(device);
-
-  useEffect(() => {
-    setActiveTab('hardware-os');
-    setDraftStatus(device.status);
-  }, [device.deviceId, device.status]);
 
   async function handleSave() {
     setIsSaving(true);
@@ -721,6 +789,8 @@ export function DeviceDetailModal({
                 className={`mx-auto max-w-5xl rounded-[2rem] border p-10 text-center shadow-sm ${
                   warrantySnapshot.status === 'expired'
                     ? 'border-[#f0c1c1] bg-[#fff5f5]'
+                    : warrantySnapshot.status === 'expiring-soon'
+                      ? 'border-[#f2d6a6] bg-[#fff8ee]'
                     : warrantySnapshot.status === 'active'
                       ? 'border-[#c7ead3] bg-[#f3fff7]'
                       : 'border-slate-200 bg-white'
@@ -730,6 +800,8 @@ export function DeviceDetailModal({
                   className={`mx-auto mb-6 flex h-24 w-24 items-center justify-center rounded-[2rem] text-white shadow-lg ${
                     warrantySnapshot.status === 'expired'
                       ? 'bg-[#cf1f1f]'
+                      : warrantySnapshot.status === 'expiring-soon'
+                        ? 'bg-[#d98a00]'
                       : warrantySnapshot.status === 'active'
                         ? 'bg-[#0a8f47]'
                         : 'bg-slate-500'
@@ -752,8 +824,8 @@ export function DeviceDetailModal({
 
               <div className="grid gap-6 lg:grid-cols-3">
                 <InfoCard label="Install Date" value={formatDateValue(device.installDate)} />
-                <InfoCard label="Primary Expiry" value={formatDateValue(device.expireDatePrimary)} />
-                <InfoCard label="Secondary Expiry" value={formatDateValue(device.expireDateSecondary)} />
+                <InfoCard label="Expiry" value={warrantySnapshot.expirationText} />
+                <InfoCard label="Warranty Term" value={device.warranty || 'Not recorded'} />
               </div>
             </div>
           )}
