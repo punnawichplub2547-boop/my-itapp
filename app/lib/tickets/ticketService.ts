@@ -14,9 +14,15 @@ import type {
 } from 'mysql2/promise';
 
 import { getDeviceDbPool } from '../db/mysql';
-import type { RepairTicket, TicketHistoryEvent, TicketNote } from '../../types';
+import type {
+  RepairTicket,
+  TicketAttachment,
+  TicketHistoryEvent,
+  TicketNote,
+} from '../../types';
 
 export interface CreateTicketInput {
+  deviceId?: string;
   deviceName: string;
   employeeName: string;
   employeeEmail: string;
@@ -43,7 +49,14 @@ export interface TicketRepository {
     actorEmail: string
   ): Promise<{ ticket: RepairTicket; changed: boolean }>;
   addNote(ticketId: string, note: TicketNote): Promise<RepairTicket>;
+  addAttachment(ticketId: string, attachment: TicketAttachment): Promise<RepairTicket>;
+  removeAttachment(
+    ticketId: string,
+    attachmentId: string
+  ): Promise<{ ticket: RepairTicket; removed: TicketAttachment | null }>;
   deleteById(ticketId: string): Promise<void>;
+  listCompletedWithin(days: number): Promise<RepairTicket[]>;
+  deleteCompletedOlderThan(days: number): Promise<number>;
 }
 
 interface TicketStore {
@@ -52,6 +65,7 @@ interface TicketStore {
 
 interface TicketRow extends RowDataPacket {
   id: number | string;
+  device_id: string | null;
   device_name: string;
   employee_name: string;
   employee_email: string;
@@ -65,6 +79,7 @@ interface TicketRow extends RowDataPacket {
   history_json: string | null;
   attachments_json: string | null;
   updated_at: Date | string | null;
+  completed_at: Date | string | null;
 }
 
 export interface TicketDbConnectionLike
@@ -134,6 +149,7 @@ export async function createTicket(
   const now = new Date();
   const ticket: RepairTicket = {
     id: generateTicketId(),
+    deviceId: normalizedInput.deviceId,
     deviceName: normalizedInput.deviceName,
     employeeName: normalizedInput.employeeName,
     employeeEmail: normalizedInput.employeeEmail,
@@ -246,6 +262,40 @@ export async function deleteTicketById(
   return repository.deleteById(normalizeTicketId(ticketId));
 }
 
+export async function addTicketAttachment(
+  ticketId: string,
+  attachment: TicketAttachment,
+  repository: TicketRepository = getDefaultTicketRepository()
+): Promise<RepairTicket> {
+  return repository.addAttachment(normalizeTicketId(ticketId), attachment);
+}
+
+export async function removeTicketAttachment(
+  ticketId: string,
+  attachmentId: string,
+  repository: TicketRepository = getDefaultTicketRepository()
+): Promise<{ ticket: RepairTicket; removed: TicketAttachment | null }> {
+  const id = attachmentId.trim();
+  if (!id) {
+    throw new TicketValidationError('Attachment ID is required.');
+  }
+  return repository.removeAttachment(normalizeTicketId(ticketId), id);
+}
+
+export async function listCompletedTickets(
+  days = 30,
+  repository: TicketRepository = getDefaultTicketRepository()
+): Promise<RepairTicket[]> {
+  return repository.listCompletedWithin(days);
+}
+
+export async function deleteCompletedTickets(
+  days = 60,
+  repository: TicketRepository = getDefaultTicketRepository()
+): Promise<number> {
+  return repository.deleteCompletedOlderThan(days);
+}
+
 export function getDefaultTicketRepository() {
   if (!defaultRepository) {
     defaultRepository = createDefaultTicketRepository();
@@ -265,6 +315,7 @@ export class MySqlTicketRepository implements TicketRepository {
     const db = this.pool;
     const [result] = await db.execute<ResultSetHeader>(
       `INSERT INTO repair_tickets (
+        device_id,
         device_name,
         employee_name,
         employee_email,
@@ -277,7 +328,7 @@ export class MySqlTicketRepository implements TicketRepository {
         notes_json,
         history_json,
         attachments_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       buildTicketSqlValues(ticket)
     );
 
@@ -289,6 +340,7 @@ export class MySqlTicketRepository implements TicketRepository {
     const [rows] = await db.query<TicketRow[]>(
       `SELECT
         id,
+        device_id,
         device_name,
         employee_name,
         employee_email,
@@ -301,7 +353,8 @@ export class MySqlTicketRepository implements TicketRepository {
         notes_json,
         history_json,
         attachments_json,
-        updated_at
+        updated_at,
+        completed_at
       FROM repair_tickets
       ORDER BY created_at DESC, id DESC`
     );
@@ -314,6 +367,7 @@ export class MySqlTicketRepository implements TicketRepository {
     const [rows] = await db.query<TicketRow[]>(
       `SELECT
         id,
+        device_id,
         device_name,
         employee_name,
         employee_email,
@@ -326,7 +380,8 @@ export class MySqlTicketRepository implements TicketRepository {
         notes_json,
         history_json,
         attachments_json,
-        updated_at
+        updated_at,
+        completed_at
       FROM repair_tickets
       WHERE id = ?
       LIMIT 1`,
@@ -365,7 +420,8 @@ export class MySqlTicketRepository implements TicketRepository {
           notes_json,
           history_json,
           attachments_json,
-          updated_at
+          updated_at,
+          completed_at
         FROM repair_tickets
         WHERE id = ?
         FOR UPDATE`,
@@ -431,7 +487,8 @@ export class MySqlTicketRepository implements TicketRepository {
           notes_json,
           history_json,
           attachments_json,
-          updated_at
+          updated_at,
+          completed_at
         FROM repair_tickets
         WHERE id = ?
         FOR UPDATE`,
@@ -458,11 +515,14 @@ export class MySqlTicketRepository implements TicketRepository {
         createStatusChangedHistoryEvent(nextStatus, actorEmail),
       ];
 
+      const isTerminal = nextStatus === 'Completed' || nextStatus === 'Closed';
       const [result] = await connection.execute<ResultSetHeader>(
         `UPDATE repair_tickets
-         SET status = ?, history_json = ?
+         SET status = ?,
+             history_json = ?,
+             completed_at = IF(?, COALESCE(completed_at, NOW()), NULL)
          WHERE id = ?`,
-        [nextStatus, JSON.stringify(mergedHistory), ticketId]
+        [nextStatus, JSON.stringify(mergedHistory), isTerminal, ticketId]
       );
 
       if (result.affectedRows === 0) {
@@ -473,6 +533,9 @@ export class MySqlTicketRepository implements TicketRepository {
         ...lockedTicket,
         status: nextStatus,
         history: mergedHistory,
+        completedAt: isTerminal
+          ? (lockedTicket.completedAt ?? new Date().toISOString())
+          : undefined,
       };
 
       await connection.commit();
@@ -528,6 +591,77 @@ export class MySqlTicketRepository implements TicketRepository {
     }
   }
 
+  async addAttachment(ticketId: string, attachment: TicketAttachment): Promise<RepairTicket> {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [rows] = await connection.query<TicketRow[]>(
+        `SELECT id, attachments_json FROM repair_tickets WHERE id = ? FOR UPDATE`,
+        [ticketId]
+      );
+
+      if (rows.length === 0) {
+        throw new TicketNotFoundError(ticketId);
+      }
+
+      const existing = parseTicketAttachments(rows[0].attachments_json);
+      const next = [...existing, attachment];
+
+      await connection.execute<ResultSetHeader>(
+        `UPDATE repair_tickets SET attachments_json = ?, updated_at = NOW() WHERE id = ?`,
+        [JSON.stringify(next), ticketId]
+      );
+
+      await connection.commit();
+      return this.findById(ticketId);
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
+  async removeAttachment(
+    ticketId: string,
+    attachmentId: string
+  ): Promise<{ ticket: RepairTicket; removed: TicketAttachment | null }> {
+    const connection = await this.pool.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [rows] = await connection.query<TicketRow[]>(
+        `SELECT id, attachments_json FROM repair_tickets WHERE id = ? FOR UPDATE`,
+        [ticketId]
+      );
+
+      if (rows.length === 0) {
+        throw new TicketNotFoundError(ticketId);
+      }
+
+      const existing = parseTicketAttachments(rows[0].attachments_json);
+      const removed = existing.find((entry) => entry.id === attachmentId) ?? null;
+      const next = existing.filter((entry) => entry.id !== attachmentId);
+
+      await connection.execute<ResultSetHeader>(
+        `UPDATE repair_tickets SET attachments_json = ?, updated_at = NOW() WHERE id = ?`,
+        [JSON.stringify(next), ticketId]
+      );
+
+      await connection.commit();
+      const ticket = await this.findById(ticketId);
+      return { ticket, removed };
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  }
+
   async deleteById(ticketId: string): Promise<void> {
     const [result] = await this.pool.execute<ResultSetHeader>(
       `DELETE FROM repair_tickets WHERE id = ?`,
@@ -537,6 +671,46 @@ export class MySqlTicketRepository implements TicketRepository {
     if (result.affectedRows === 0) {
       throw new TicketNotFoundError(ticketId);
     }
+  }
+
+  async listCompletedWithin(days: number): Promise<RepairTicket[]> {
+    const [rows] = await this.pool.query<TicketRow[]>(
+      `SELECT
+        id,
+        device_id,
+        device_name,
+        employee_name,
+        employee_email,
+        department,
+        problem_type,
+        description,
+        status,
+        priority,
+        created_at,
+        notes_json,
+        history_json,
+        attachments_json,
+        updated_at,
+        completed_at
+      FROM repair_tickets
+      WHERE status IN ('Completed', 'Closed')
+        AND completed_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+      ORDER BY completed_at DESC, id DESC`,
+      [days]
+    );
+
+    return rows.map(mapTicketRow);
+  }
+
+  async deleteCompletedOlderThan(days: number): Promise<number> {
+    const [result] = await this.pool.execute<ResultSetHeader>(
+      `DELETE FROM repair_tickets
+       WHERE status IN ('Completed', 'Closed')
+         AND completed_at < DATE_SUB(NOW(), INTERVAL ? DAY)`,
+      [days]
+    );
+
+    return result.affectedRows;
   }
 }
 
@@ -627,11 +801,15 @@ export class FileTicketRepository implements TicketRepository {
         throw new TicketStatusConflictError(ticketId, expectedPreviousStatus, current.status);
       }
 
+      const isTerminalStatus = nextStatus === 'Completed' || nextStatus === 'Closed';
       const updated = {
         ...current,
         status: nextStatus,
         history: [...(current.history ?? []), createStatusChangedHistoryEvent(nextStatus, actorEmail)],
         updatedAt: new Date().toISOString(),
+        completedAt: isTerminalStatus
+          ? (current.completedAt ?? new Date().toISOString())
+          : undefined,
       };
 
       const tickets = store.tickets.slice();
@@ -671,6 +849,54 @@ export class FileTicketRepository implements TicketRepository {
     });
   }
 
+  async addAttachment(ticketId: string, attachment: TicketAttachment): Promise<RepairTicket> {
+    return this.enqueueWrite(async () => {
+      const store = await this.readStore();
+      const index = store.tickets.findIndex((t) => sameTicketId(t.id, ticketId));
+
+      if (index === -1) {
+        throw new TicketNotFoundError(ticketId);
+      }
+
+      const current = store.tickets[index];
+      const updated: RepairTicket = {
+        ...current,
+        attachments: [...(current.attachments ?? []), attachment],
+      };
+
+      const tickets = store.tickets.slice();
+      tickets[index] = updated;
+      await this.writeStore({ tickets });
+      return updated;
+    });
+  }
+
+  async removeAttachment(
+    ticketId: string,
+    attachmentId: string
+  ): Promise<{ ticket: RepairTicket; removed: TicketAttachment | null }> {
+    return this.enqueueWrite(async () => {
+      const store = await this.readStore();
+      const index = store.tickets.findIndex((t) => sameTicketId(t.id, ticketId));
+
+      if (index === -1) {
+        throw new TicketNotFoundError(ticketId);
+      }
+
+      const current = store.tickets[index];
+      const removed = (current.attachments ?? []).find((entry) => entry.id === attachmentId) ?? null;
+      const updated: RepairTicket = {
+        ...current,
+        attachments: (current.attachments ?? []).filter((entry) => entry.id !== attachmentId),
+      };
+
+      const tickets = store.tickets.slice();
+      tickets[index] = updated;
+      await this.writeStore({ tickets });
+      return { ticket: updated, removed };
+    });
+  }
+
   async deleteById(ticketId: string): Promise<void> {
     await this.enqueueWrite(async () => {
       const store = await this.readStore();
@@ -681,6 +907,38 @@ export class FileTicketRepository implements TicketRepository {
       }
 
       await this.writeStore({ tickets: store.tickets.filter((_, i) => i !== index) });
+    });
+  }
+
+  async listCompletedWithin(days: number): Promise<RepairTicket[]> {
+    const store = await this.readStore();
+    const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+
+    return store.tickets
+      .filter((t) => {
+        if (t.status !== 'Completed' && t.status !== 'Closed') return false;
+        if (!t.completedAt) return false;
+        return new Date(t.completedAt).getTime() >= cutoff;
+      })
+      .sort((a, b) => {
+        const ta = a.completedAt ? new Date(a.completedAt).getTime() : 0;
+        const tb = b.completedAt ? new Date(b.completedAt).getTime() : 0;
+        return tb - ta;
+      });
+  }
+
+  async deleteCompletedOlderThan(days: number): Promise<number> {
+    return this.enqueueWrite(async () => {
+      const store = await this.readStore();
+      const cutoff = Date.now() - days * 24 * 60 * 60 * 1000;
+      const keep = store.tickets.filter((t) => {
+        if (t.status !== 'Completed' && t.status !== 'Closed') return true;
+        if (!t.completedAt) return true;
+        return new Date(t.completedAt).getTime() >= cutoff;
+      });
+      const deleted = store.tickets.length - keep.length;
+      if (deleted > 0) await this.writeStore({ tickets: keep });
+      return deleted;
     });
   }
 
@@ -715,6 +973,7 @@ export class FileTicketRepository implements TicketRepository {
 
 function buildTicketSqlValues(ticket: RepairTicket) {
   return [
+    ticket.deviceId ?? null,
     ticket.deviceName,
     ticket.employeeName,
     ticket.employeeEmail,
@@ -733,6 +992,7 @@ function buildTicketSqlValues(ticket: RepairTicket) {
 function mapTicketRow(row: TicketRow): RepairTicket {
   return {
     id: String(row.id),
+    deviceId: row.device_id ?? undefined,
     deviceName: row.device_name ?? '',
     employeeName: row.employee_name ?? '',
     employeeEmail: row.employee_email ?? '',
@@ -742,6 +1002,7 @@ function mapTicketRow(row: TicketRow): RepairTicket {
     status: isTicketStatus(row.status) ? row.status : 'Pending',
     priority: isTicketPriority(row.priority) ? row.priority : 'Medium',
     createdAt: normalizeDbTimestamp(row.created_at) ?? new Date().toISOString(),
+    completedAt: normalizeDbTimestamp(row.completed_at) ?? undefined,
     notes: parseTicketNotes(row.notes_json),
     history: parseTicketHistory(row.history_json),
     attachments: parseTicketAttachments(row.attachments_json),
@@ -769,6 +1030,7 @@ function normalizeStoredTicket(record: unknown): RepairTicket {
 
   return {
     id: normalizeText(record.id) || 'TK-UNKNOWN',
+    deviceId: typeof record.deviceId === 'string' && record.deviceId.trim() ? record.deviceId.trim() : undefined,
     deviceName: normalizeText(record.deviceName),
     employeeName: normalizeText(record.employeeName),
     employeeEmail: normalizeEmail(record.employeeEmail),
@@ -790,6 +1052,7 @@ export function normalizeCreateTicketInput(input: unknown) {
   }
 
   return {
+    deviceId: typeof input.deviceId === 'string' && input.deviceId.trim() ? input.deviceId.trim() : undefined,
     deviceName: normalizeRequiredText(input.deviceName, 'deviceName is required.'),
     employeeName: normalizeRequiredText(input.employeeName, 'employeeName is required.'),
     employeeEmail: normalizeRequiredEmail(input.employeeEmail, 'employeeEmail is required.'),
@@ -947,9 +1210,9 @@ function parseTicketHistory(value: unknown): TicketHistoryEvent[] {
   return parsed.filter(isTicketHistoryEvent);
 }
 
-function parseTicketAttachments(value: unknown) {
+function parseTicketAttachments(value: unknown): TicketAttachment[] {
   const parsed = parseJsonArray(value);
-  return parsed.filter((entry): entry is string => typeof entry === 'string');
+  return parsed.filter(isTicketAttachment);
 }
 
 function normalizeTicketNotes(value: unknown): TicketNote[] {
@@ -968,12 +1231,27 @@ function normalizeTicketHistory(value: unknown): TicketHistoryEvent[] {
   return value.filter(isTicketHistoryEvent);
 }
 
-function normalizeTicketAttachments(value: unknown) {
+function normalizeTicketAttachments(value: unknown): TicketAttachment[] {
   if (!Array.isArray(value)) {
     return [];
   }
 
-  return value.filter((entry): entry is string => typeof entry === 'string');
+  return value.filter(isTicketAttachment);
+}
+
+function isTicketAttachment(value: unknown): value is TicketAttachment {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === 'string' &&
+    typeof value.fileName === 'string' &&
+    typeof value.url === 'string' &&
+    typeof value.mimeType === 'string' &&
+    typeof value.size === 'number' &&
+    typeof value.uploadedAt === 'string'
+  );
 }
 
 function parseJsonArray(value: unknown) {

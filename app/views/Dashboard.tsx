@@ -4,8 +4,8 @@ import { useEffect, useState } from 'react';
 import { motion } from 'motion/react';
 import { Calendar, Laptop, Server, Printer, Smartphone, Wrench, ShieldCheck, CheckCircle2, AlertTriangle, Clock, ShieldAlert } from 'lucide-react';
 import StatCard from '../components/StatCard';
-import { getWarrantyStatus } from '../utils/status';
 import type { Device, RepairTicket } from '../types';
+import { getVisibleWarrantyAlerts, getWarrantyAlertStatus } from '../lib/devices/warrantyAlerts';
 
 function formatDate(ts: string) {
   const d = new Date(ts);
@@ -15,10 +15,14 @@ function formatDate(ts: string) {
 
 export default function Dashboard({
   onTicketClick,
+  onOpenWarrantyAudit = () => {},
+  onViewAllTickets = () => {},
   devices,
   tickets,
 }: {
   onTicketClick: (id: string) => void;
+  onOpenWarrantyAudit?: () => void;
+  onViewAllTickets?: () => void;
   devices?: Device[];
   tickets?: RepairTicket[];
 }) {
@@ -63,14 +67,11 @@ export default function Dashboard({
 
   const fleetDevices = devices ?? fetchedDevices;
   const totalDevices = fleetDevices.length;
-  const deviceStatusData = fleetDevices.map(device => ({
-    device,
-    status: getWarrantyStatus(device.expireDateSecondary || device.expireDatePrimary),
-  }));
-  const expiredCount = deviceStatusData.filter(s => s.status.label === 'Expired').length;
-  const expiringSoonCount = deviceStatusData.filter(s => s.status.label === 'Expiring Soon').length;
-  const activeCount = deviceStatusData.filter(s => s.status.label === 'Active').length;
-  const alertingDevices = deviceStatusData.filter(item => item.status.label !== 'Active');
+  const deviceStatusData = fleetDevices.map((device) => getWarrantyAlertStatus(device));
+  const expiredCount = deviceStatusData.filter((status) => status.kind === 'expired').length;
+  const expiringSoonCount = deviceStatusData.filter((status) => status.kind === 'expiring-soon').length;
+  const activeCount = totalDevices - expiredCount - expiringSoonCount;
+  const warrantyAlerts = getVisibleWarrantyAlerts(fleetDevices);
   const laptopCount = fleetDevices.filter(device => device.deviceType === 'Laptop' || device.deviceType === 'Notebook').length;
   const pcCount = fleetDevices.filter(device => device.deviceType === 'PC' || device.deviceType === 'Desktop').length;
   const serverCount = fleetDevices.filter(device => device.deviceType === 'Server').length;
@@ -117,7 +118,7 @@ export default function Dashboard({
                 </select>
               </div>
             </div>
-            <button className="text-[11px] font-bold text-primary uppercase hover:underline">View All</button>
+            <button onClick={onViewAllTickets} className="text-[11px] font-bold text-primary uppercase hover:underline">View All</button>
           </div>
           <div className="divide-y divide-outline-variant overflow-y-auto max-h-[500px] custom-scrollbar">
             {filteredTickets.map(ticket => (
@@ -157,16 +158,16 @@ export default function Dashboard({
             <div className="bg-error-container/30 px-6 py-4 border-b border-error/10 flex items-center gap-3">
               <ShieldAlert className="w-5 h-5 text-error" />
               <h4 className="font-bold text-error">Warranty Alerts</h4>
-              {alertingDevices.length > 0 && (
-                <span className="ml-auto bg-error text-white text-[10px] font-black px-2 py-0.5 rounded-full">{alertingDevices.length}</span>
+              {warrantyAlerts.length > 0 && (
+                <span className="ml-auto bg-error text-white text-[10px] font-black px-2 py-0.5 rounded-full">{warrantyAlerts.length}</span>
               )}
             </div>
             <div className="p-4 space-y-3 max-h-[280px] overflow-y-auto custom-scrollbar">
-              {alertingDevices.length > 0 ? alertingDevices.map(({ device, status }) => (
+              {warrantyAlerts.length > 0 ? warrantyAlerts.map(({ device, kind, daysRemaining }) => (
                 <div key={device.deviceId} className="p-3 bg-white border border-outline-variant/30 rounded-xl flex items-center justify-between group">
                   <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${status.label === 'Expired' ? 'bg-error/10 text-error' : 'bg-amber-50 text-amber-600'}`}>
-                      {status.icon}
+                    <div className={`p-2 rounded-lg ${kind === 'expired' ? 'bg-error/10 text-error' : 'bg-amber-50 text-amber-600'}`}>
+                      {kind === 'expired' ? <AlertTriangle size={12} className="text-error" /> : <Clock size={12} className="text-amber-500" />}
                     </div>
                     <div>
                       <p className="text-xs font-bold text-primary leading-none uppercase">{device.deviceId}</p>
@@ -174,19 +175,29 @@ export default function Dashboard({
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg border italic ${status.color}`}>
-                      {status.days < 0 ? `Expired` : `${status.days}d rem.`}
+                    <p className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg border italic ${
+                      kind === 'expired'
+                        ? 'text-error bg-error/10 border-error/20'
+                        : 'text-amber-600 bg-amber-50 border-amber-200'
+                    }`}>
+                      {kind === 'expired' ? 'Expired' : `Expiring Soon ${daysRemaining}d`}
                     </p>
                   </div>
                 </div>
               )) : (
                 <div className="py-8 text-center opacity-40">
                   <CheckCircle2 size={32} className="text-success mx-auto mb-2" />
-                  <p className="text-[10px] font-bold text-secondary uppercase tracking-widest">No Active Alerts</p>
+                  <p className="text-[10px] font-bold text-secondary uppercase tracking-widest">No Visible Alerts</p>
                 </div>
               )}
             </div>
-            <button className="w-full py-3 border-t border-outline-variant text-[10px] font-black uppercase text-primary tracking-widest hover:bg-primary/5 transition-all">Audit Warranty Fleet</button>
+            <button
+              type="button"
+              onClick={onOpenWarrantyAudit}
+              className="w-full py-3 border-t border-outline-variant text-[10px] font-black uppercase text-primary tracking-widest hover:bg-primary/5 transition-all"
+            >
+              Open Warranty Audit
+            </button>
           </div>
 
           <section className="bg-white rounded-3xl border border-outline-variant shadow-sm overflow-hidden">

@@ -47,6 +47,7 @@ export interface Device {
   notes: string;
   createdAt?: string;
   updatedAt?: string;
+  warrantyAlertedAt?: string;
 }
 
 export interface TicketNote {
@@ -63,8 +64,18 @@ export interface TicketHistoryEvent {
   timestamp: string;
 }
 
+export interface TicketAttachment {
+  id: string;
+  fileName: string;
+  url: string;
+  mimeType: string;
+  size: number;
+  uploadedAt: string;
+}
+
 export interface RepairTicket {
   id: string;
+  deviceId?: string;
   deviceName: string;
   employeeName: string;
   employeeEmail: string;
@@ -74,12 +85,44 @@ export interface RepairTicket {
   status: 'Pending' | 'In Progress' | 'Waiting for Parts' | 'Completed' | 'Closed';
   priority: 'Low' | 'Medium' | 'High' | 'Critical';
   createdAt: string;
+  completedAt?: string;
   notes?: TicketNote[];
   history?: TicketHistoryEvent[];
-  attachments?: string[];
+  attachments?: TicketAttachment[];
 }
 
-export type ViewType = 'dashboard' | 'inventory' | 'tickets' | 'create-request' | 'add-device' | 'reports' | 'login';
+export type DeviceRepairEventType =
+  | 'ticket_created'
+  | 'ticket_status_changed'
+  | 'ticket_completed'
+  | 'ticket_deleted'
+  | 'device_note';
+
+export interface DeviceRepairEvent {
+  id: string;
+  deviceId: string;
+  ticketId?: string;
+  eventType: DeviceRepairEventType;
+  title: string;
+  description?: string;
+  problemType?: string;
+  status?: string;
+  reportedBy?: string;
+  technician?: string;
+  createdBy?: string;
+  createdAt: string;
+  source: 'ticket' | 'device' | 'system';
+}
+
+export type ViewType =
+  | 'dashboard'
+  | 'inventory'
+  | 'tickets'
+  | 'create-request'
+  | 'add-device'
+  | 'reports'
+  | 'warranty-audit'
+  | 'login';
 
 export interface ReportEntry {
   id: string;

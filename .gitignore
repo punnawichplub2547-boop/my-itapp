@@ -29,9 +29,11 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+next-dev*.log
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,3 +41,15 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# user uploads (kept out of source control; served via /uploads/*)
+/public/uploads/
+.env.local
+.claude/
+.playwright-cli/
+metadata.json
+next-dev*.err
+next-dev*.out
+/tmp-cookie-*.txt
+/email-preview.html
+/F-IT-010 Rev.01.xlsx

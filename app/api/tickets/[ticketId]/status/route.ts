@@ -1,5 +1,6 @@
 import { after } from 'next/server';
 import type { RepairTicket } from '../../../../types';
+import { requireAuthenticatedRequest } from '../../../../lib/auth/mockUser';
 import { dispatchTicketNotificationEvent } from '../../../../lib/notifications/eventDispatcher';
 import {
   findTicketById,
@@ -8,6 +9,7 @@ import {
   TicketValidationError,
   transitionTicketStatusWithActor,
 } from '../../../../lib/tickets/ticketService';
+import { appendDeviceRepairEvent } from '../../../../lib/devices/deviceRepairEventService';
 import {
   buildNotificationRecipients,
   isValidEmail,
@@ -35,6 +37,12 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
+  const unauthorizedResponse = requireAuthenticatedRequest(request);
+
+  if (unauthorizedResponse) {
+    return unauthorizedResponse;
+  }
+
   const { ticketId } = await params;
   let body: Partial<UpdateTicketStatusRequest>;
 
@@ -62,34 +70,40 @@ export async function PATCH(
     return Response.json({ error: `Ticket ${ticketId} not found.` }, { status: 404 });
   }
 
-  if (!hasValidRecipientOverrides(body)) {
-    return Response.json(
-      { error: 'customerName and customerEmail must be strings when provided.' },
-      { status: 400 }
-    );
-  }
-
   const effectiveNotifyRecipients =
     body.notifyRecipients === undefined
       ? (['employee'] satisfies NotificationRecipientKind[])
       : body.notifyRecipients;
 
-  const recipients = buildNotificationRecipients({
-    ticket: { ...persistedTicket, status: body.nextStatus },
-    notifyRecipients: effectiveNotifyRecipients,
-    customerName: body.customerName,
-    customerEmail: body.customerEmail,
-  });
+  // notifyRecipients: [] means status-only update — skip recipient validation and notification
+  const shouldNotify = effectiveNotifyRecipients.length > 0;
 
-  if (recipients.length === 0) {
-    return Response.json(
-      { error: 'At least one valid customer or employee recipient email is required.' },
-      { status: 400 }
-    );
+  if (shouldNotify) {
+    if (!hasValidRecipientOverrides(body)) {
+      return Response.json(
+        { error: 'customerName and customerEmail must be strings when provided.' },
+        { status: 400 }
+      );
+    }
+
+    const recipients = buildNotificationRecipients({
+      ticket: { ...persistedTicket, status: body.nextStatus },
+      notifyRecipients: effectiveNotifyRecipients,
+      customerName: body.customerName,
+      customerEmail: body.customerEmail,
+    });
+
+    if (recipients.length === 0) {
+      return Response.json(
+        { error: 'At least one valid customer or employee recipient email is required.' },
+        { status: 400 }
+      );
+    }
   }
 
   let updatedTicket: RepairTicket;
   let statusChanged = false;
+  let events = [] as ReturnType<typeof eventsForStatusTransition>;
 
   try {
     if (persistedTicket.status === body.nextStatus) {
@@ -126,24 +140,54 @@ export async function PATCH(
     throw error;
   }
 
-  const events = statusChanged
-    ? eventsForStatusTransition({
-        ticket: updatedTicket,
-        previousStatus: body.previousStatus,
-        nextStatus: body.nextStatus,
-        actorEmail,
-        recipients,
-        notifyRecipients: effectiveNotifyRecipients,
-      })
-    : [];
-
-  const dispatcher = notificationDispatcher;
-
-  scheduleTicketNotificationDispatch(() => {
-    for (const event of events) {
-      dispatcher(event);
+  // Persist a device repair event so Repair Log survives ticket deletion (best-effort)
+  if (statusChanged && updatedTicket.deviceId) {
+    const isTerminal = body.nextStatus === 'Completed' || body.nextStatus === 'Closed';
+    try {
+      await appendDeviceRepairEvent({
+        deviceId: updatedTicket.deviceId,
+        ticketId: updatedTicket.id,
+        eventType: isTerminal ? 'ticket_completed' : 'ticket_status_changed',
+        title: isTerminal ? 'Ticket Completed' : `Status Changed to ${body.nextStatus}`,
+        description: `Status changed from ${body.previousStatus} to ${body.nextStatus}`,
+        status: body.nextStatus,
+        technician: actorEmail,
+        createdBy: actorEmail,
+        createdAt: new Date().toISOString(),
+        source: 'ticket',
+      });
+    } catch {
+      // best-effort — do not block status update
     }
-  });
+  }
+
+  if (shouldNotify) {
+    const recipients = buildNotificationRecipients({
+      ticket: { ...persistedTicket, status: body.nextStatus },
+      notifyRecipients: effectiveNotifyRecipients,
+      customerName: body.customerName,
+      customerEmail: body.customerEmail,
+    });
+
+    events = statusChanged
+      ? eventsForStatusTransition({
+          ticket: updatedTicket,
+          previousStatus: body.previousStatus,
+          nextStatus: body.nextStatus,
+          actorEmail,
+          recipients,
+          notifyRecipients: effectiveNotifyRecipients,
+        })
+      : [];
+
+    const dispatcher = notificationDispatcher;
+
+    scheduleTicketNotificationDispatch(() => {
+      for (const event of events) {
+        dispatcher(event);
+      }
+    });
+  }
 
   return Response.json({
     ticket: updatedTicket,

@@ -30,10 +30,11 @@ export function buildNotificationRecipients({
 
 export function normalizeEmail(value: string): string | null {
   const email = value.trim().toLowerCase();
-  const hasSingleAt = email.split('@').length === 2;
-  const hasDomainDot = email.includes('.') && email.lastIndexOf('.') > email.indexOf('@');
+  const parts = email.split('@');
+  const hasSingleAt = parts.length === 2;
+  const hasNonEmptyParts = hasSingleAt && parts[0].length > 0 && parts[1].length > 0;
 
-  if (!hasSingleAt || !hasDomainDot || email.includes(' ')) {
+  if (!hasSingleAt || !hasNonEmptyParts || email.includes(' ')) {
     return null;
   }
 

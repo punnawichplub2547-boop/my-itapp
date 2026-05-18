@@ -10,6 +10,7 @@ const SLUG_TO_VIEW: Record<string, ViewType> = {
   'device-inventory': 'inventory',
   'add-new-device': 'add-device',
   reports: 'reports',
+  'warranty-audit': 'warranty-audit',
 };
 
 export default async function DashboardSubPage({
@@ -17,7 +18,7 @@ export default async function DashboardSubPage({
   searchParams,
 }: {
   params: Promise<{ slug: string[] }>;
-  searchParams: Promise<{ ticket?: string }>;
+  searchParams: Promise<{ ticket?: string; q?: string; device?: string }>;
 }) {
   const cookieStore = await cookies();
   if (!isValidSessionToken(cookieStore.get(SESSION_COOKIE_NAME)?.value)) {
@@ -26,7 +27,14 @@ export default async function DashboardSubPage({
 
   const { slug } = await params;
   const view: ViewType = SLUG_TO_VIEW[slug[0]] ?? 'dashboard';
-  const { ticket } = await searchParams;
+  const { ticket, q, device } = await searchParams;
 
-  return <RepairLinkApp initialView={view} initialTicketId={ticket} />;
+  return (
+    <RepairLinkApp
+      initialView={view}
+      initialTicketId={ticket}
+      initialSearchQuery={q}
+      initialDeviceId={device}
+    />
+  );
 }

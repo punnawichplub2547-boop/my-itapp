@@ -1,36 +1,91 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# RepairLink
 
-## Getting Started
+RepairLink is an internal admin web app for IT repair-request tracking and device inventory management.
 
-First, run the development server:
+The project is built with Next.js and MySQL, and is intended primarily for administrator use rather than employee self-service.
+
+## Current Scope
+
+The app currently supports:
+
+- Admin login
+- Dashboard overview
+- Device Inventory
+- Add New Device
+- Create Repair Request
+- Repair Status management
+- Reports for completed/closed tickets
+- Read-only Warranty Audit
+
+## Tech Stack
+
+- Next.js 16
+- React 19
+- Node.js
+- MySQL
+
+Docker files are included as an optional deployment path, but Docker is not required.
+
+## Local Development
+
+Prerequisites:
+
+- Node.js
+- MySQL
+
+Install dependencies:
+
+```bash
+npm install
+```
+
+Start the development server:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Environment Files
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Use these example files as references:
 
-## Learn More
+- `.env.example` for local development
+- `.env.production.example` for server deployment
 
-To learn more about Next.js, take a look at the following resources:
+Do not commit or hand over real local secret files such as:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `.env.local`
+- `.env.docker.local`
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Database Setup
 
-## Deploy on Vercel
+Core database references:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+- `docs/device-database.md`
+- `docs/repair-ticket-database.md`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Related migration scripts:
+
+- `scripts/migrate-add-warranty-alerted-at.ts`
+- `scripts/migrate-add-completed-at.ts`
+
+## Deployment
+
+Recommended handover path for this project:
+
+- Non-Docker deployment on an internal server with Node.js + MySQL
+
+Deployment steps are documented in:
+
+- `DEPLOY.md`
+- `HANDOVER.md`
+
+## Scripts
+
+- `npm run dev` starts the development server
+- `npm run build` creates a production build
+- `npm run start` serves the production build
+- `npm run lint` runs ESLint
+- `npm test` runs the test suite

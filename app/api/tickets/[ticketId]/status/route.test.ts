@@ -208,7 +208,7 @@ test('PATCH /api/tickets/[ticketId]/status falls back to the system actor for bl
   }
 });
 
-test('PATCH /api/tickets/[ticketId]/status returns 400 for an explicit empty notifyRecipients list', async () => {
+test('PATCH /api/tickets/[ticketId]/status allows an explicit empty notifyRecipients list for status-only updates', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'my-itapp-ticket-status-'));
   const storePath = join(tempDir, 'tickets.json');
   const originalEnv = captureEnv([...ENV_KEYS, ...DB_ENV_KEYS]);
@@ -244,10 +244,17 @@ test('PATCH /api/tickets/[ticketId]/status returns 400 for an explicit empty not
       }),
       { params: Promise.resolve({ ticketId: created.id }) }
     );
-    const result = (await response.json()) as { error?: string };
+    const result = (await response.json()) as {
+      ticket?: { id?: string; status?: string; history?: Array<{ action?: string; user?: string }> };
+      notificationEventsQueued?: number;
+    };
 
-    assert.equal(response.status, 400);
-    assert.match(result.error ?? '', /valid customer or employee recipient email/i);
+    assert.equal(response.status, 200);
+    assert.equal(result.ticket?.id, created.id);
+    assert.equal(result.ticket?.status, 'In Progress');
+    assert.equal(result.notificationEventsQueued, 0);
+    assert.equal(result.ticket?.history?.at(-1)?.action, 'Status Changed to In Progress');
+    assert.equal(result.ticket?.history?.at(-1)?.user, 'admin@repairlink.local');
     assert.equal(notificationQueue.jobs.length, 0);
   } finally {
     resetDefaultTicketRepositoryForTest();

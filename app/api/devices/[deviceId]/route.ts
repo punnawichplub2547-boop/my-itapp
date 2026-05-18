@@ -1,10 +1,12 @@
 import {
+  deleteDevice,
   DeviceDatabaseConfigurationError,
   DeviceNotFoundError,
   DeviceValidationError,
   updateDeviceAssignedTo,
   updateDeviceStatus,
 } from '../../../lib/devices/deviceService';
+import { requireAuthenticatedRequest } from '../../../lib/auth/mockUser';
 
 export const runtime = 'nodejs';
 
@@ -12,6 +14,12 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ deviceId: string }> }
 ) {
+  const unauthorizedResponse = requireAuthenticatedRequest(request);
+
+  if (unauthorizedResponse) {
+    return unauthorizedResponse;
+  }
+
   const { deviceId } = await params;
   let body: unknown;
 
@@ -66,6 +74,43 @@ export async function PATCH(
       { error: 'Unable to update the device right now.' },
       { status: 500 }
     );
+  }
+}
+
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ deviceId: string }> }
+) {
+  const unauthorizedResponse = requireAuthenticatedRequest(request);
+
+  if (unauthorizedResponse) {
+    return unauthorizedResponse;
+  }
+
+  const { deviceId } = await params;
+
+  try {
+    await deleteDevice(deviceId);
+    return Response.json({ ok: true, deletedDeviceId: deviceId });
+  } catch (error) {
+    if (error instanceof DeviceNotFoundError) {
+      return Response.json({ ok: false, error: error.message }, { status: 404 });
+    }
+
+    if (error instanceof DeviceDatabaseConfigurationError) {
+      return Response.json(
+        { ok: false, error: 'Database is not configured. Set DATABASE_URL or DB_HOST/DB_USER/DB_PASSWORD/DB_NAME.' },
+        { status: 503 }
+      );
+    }
+
+    console.error('Failed to delete device', {
+      error,
+      operation: 'devices.delete',
+      deviceId,
+    });
+
+    return Response.json({ ok: false, error: 'Unable to delete the device right now.' }, { status: 500 });
   }
 }
 

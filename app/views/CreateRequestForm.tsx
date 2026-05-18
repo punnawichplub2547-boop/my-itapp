@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Ticket, Laptop, ArrowLeft, Send, User, AlertCircle } from 'lucide-react';
 import type { Device, RepairTicket } from '../types';
@@ -58,9 +58,9 @@ export default function CreateRequestForm({
   onBack: () => void;
   onTicketCreated?: (ticket: RepairTicket) => void;
 }) {
-  const departments = useMemo(() => listRequestDepartments(devices), [devices]);
   const [department, setDepartment] = useState('');
   const [deviceModel, setDeviceModel] = useState('');
+  const [selectedInventoryDeviceId, setSelectedInventoryDeviceId] = useState<string | null>(null);
   const [assignedTo, setAssignedTo] = useState('');
   const [employeeEmail, setEmployeeEmail] = useState('');
   const [problemType, setProblemType] = useState(PROBLEM_TYPE_OPTIONS[0]);
@@ -73,10 +73,65 @@ export default function CreateRequestForm({
   const criticalOpenTickets = openTickets.filter(t => t.priority === 'Critical');
   const featuredTicket = criticalOpenTickets[0] ?? openTickets[0] ?? null;
 
+  const departmentSuggestions = useMemo(() => listRequestDepartments(devices), [devices]);
+
+  const deviceModelSuggestions = useMemo(() => {
+    if (!department.trim()) return uniqueSortedValues(devices.map(d => d.model));
+    return listRequestDeviceModels(devices, department);
+  }, [devices, department]);
+
+  const assigneeSuggestions = useMemo(
+    () => listRequestAssignees(devices, department, deviceModel),
+    [devices, department, deviceModel]
+  );
+
+  function handleDepartmentChange(value: string) {
+    setDepartment(value);
+    setDeviceModel('');
+    setAssignedTo('');
+    setSelectedInventoryDeviceId(null);
+  }
+
+  function handleDeviceModelChange(value: string) {
+    setDeviceModel(value);
+    const matched = devices.filter(
+      d => d.model === value && (!department.trim() || d.department === department)
+    );
+    if (matched.length === 1) {
+      // Unique inventory device identified — capture its ID for confirmed ticket linking
+      setSelectedInventoryDeviceId(matched[0].deviceId);
+      if (!assignedTo && matched[0].assignedTo) {
+        setAssignedTo(matched[0].assignedTo);
+      }
+    } else {
+      setSelectedInventoryDeviceId(null);
+    }
+  }
+
   async function handleSubmit() {
     setSubmitError(null);
 
-    if (!department || !deviceModel || !assignedTo || !employeeEmail || !description) {
+    const payload = {
+      deviceId: selectedInventoryDeviceId ?? undefined,
+      deviceName: deviceModel.trim(),
+      employeeName: assignedTo.trim(),
+      employeeEmail: employeeEmail.trim(),
+      department: department.trim(),
+      problemType: problemType.trim(),
+      description: description.trim(),
+      priority,
+    };
+
+    console.log('[CreateRequest] Submitting payload:', payload);
+
+    if (
+      !payload.deviceName ||
+      !payload.employeeName ||
+      !payload.employeeEmail ||
+      !payload.department ||
+      !payload.problemType ||
+      !payload.description
+    ) {
       setSubmitError('Please fill in all required fields.');
       return;
     }
@@ -87,15 +142,7 @@ export default function CreateRequestForm({
       const response = await fetch('/api/tickets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          deviceName: deviceModel,
-          employeeName: assignedTo,
-          employeeEmail,
-          department,
-          problemType,
-          description,
-          priority,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const result = await response.json();
@@ -113,42 +160,8 @@ export default function CreateRequestForm({
     }
   }
 
-  const deviceModels = useMemo(
-    () => listRequestDeviceModels(devices, department),
-    [devices, department]
-  );
-  const assignees = useMemo(
-    () => listRequestAssignees(devices, department, deviceModel),
-    [devices, department, deviceModel]
-  );
-
-  useEffect(() => {
-    if (department && !departments.includes(department)) {
-      setDepartment('');
-      setDeviceModel('');
-      setAssignedTo('');
-    }
-  }, [departments, department]);
-
-  useEffect(() => {
-    if (deviceModel && !deviceModels.includes(deviceModel)) {
-      setDeviceModel('');
-      setAssignedTo('');
-    }
-  }, [deviceModels, deviceModel]);
-
-  useEffect(() => {
-    if (!assignees.length) {
-      if (assignedTo) {
-        setAssignedTo('');
-      }
-      return;
-    }
-
-    if (!assignees.includes(assignedTo)) {
-      setAssignedTo(assignees[0]);
-    }
-  }, [assignees, assignedTo]);
+  const comboInputClass =
+    'w-full px-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl text-sm focus:bg-white outline-none focus:border-primary transition-all';
 
   return (
     <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} className="space-y-8 pb-12">
@@ -171,41 +184,31 @@ export default function CreateRequestForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="md:col-span-2 space-y-1.5">
                   <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Department</label>
-                  <select
+                  <input
+                    type="text"
+                    list="department-options"
                     value={department}
-                    onChange={(event) => {
-                      const nextDepartment = event.target.value;
-                      setDepartment(nextDepartment);
-                      setDeviceModel('');
-                      setAssignedTo('');
-                    }}
-                    className="w-full px-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl text-sm outline-none focus:border-primary appearance-none"
-                  >
-                    <option value="">Select a department</option>
-                    {departments.map((departmentOption) => (
-                      <option key={departmentOption} value={departmentOption}>
-                        {departmentOption}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(e) => handleDepartmentChange(e.target.value)}
+                    placeholder="Select or type a department"
+                    className={comboInputClass}
+                  />
+                  <datalist id="department-options">
+                    {departmentSuggestions.map(d => <option key={d} value={d} />)}
+                  </datalist>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Assigned To</label>
-                  <select
+                  <input
+                    type="text"
+                    list="assignee-options"
                     value={assignedTo}
-                    onChange={(event) => setAssignedTo(event.target.value)}
-                    disabled={!deviceModel || !assignees.length}
-                    className="w-full px-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl text-sm outline-none focus:border-primary appearance-none disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="">
-                      {deviceModel ? 'Select assigned employee' : 'Choose a device model first'}
-                    </option>
-                    {assignees.map((assigneeOption) => (
-                      <option key={assigneeOption} value={assigneeOption}>
-                        {assigneeOption}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(e) => setAssignedTo(e.target.value)}
+                    placeholder="Select or type an employee name"
+                    className={comboInputClass}
+                  />
+                  <datalist id="assignee-options">
+                    {assigneeSuggestions.map(a => <option key={a} value={a} />)}
+                  </datalist>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Employee Email</label>
@@ -213,7 +216,7 @@ export default function CreateRequestForm({
                     value={employeeEmail}
                     onChange={(event) => setEmployeeEmail(event.target.value)}
                     placeholder="jane.doe@enterprise.com"
-                    className="w-full px-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl text-sm focus:bg-white outline-none focus:border-primary transition-all"
+                    className={comboInputClass}
                   />
                 </div>
               </div>
@@ -227,24 +230,17 @@ export default function CreateRequestForm({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Device Model</label>
-                  <select
+                  <input
+                    type="text"
+                    list="device-model-options"
                     value={deviceModel}
-                    onChange={(event) => {
-                      setDeviceModel(event.target.value);
-                      setAssignedTo('');
-                    }}
-                    disabled={!department}
-                    className="w-full px-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl text-sm outline-none focus:border-primary appearance-none disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    <option value="">
-                      {department ? 'Select a device model' : 'Choose a department first'}
-                    </option>
-                    {deviceModels.map((modelOption) => (
-                      <option key={modelOption} value={modelOption}>
-                        {modelOption}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(e) => handleDeviceModelChange(e.target.value)}
+                    placeholder="Select or type a device model"
+                    className={comboInputClass}
+                  />
+                  <datalist id="device-model-options">
+                    {deviceModelSuggestions.map(m => <option key={m} value={m} />)}
+                  </datalist>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Problem Type</label>

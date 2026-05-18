@@ -127,8 +127,8 @@ test('renders inventory-backed department choices and repair priority options', 
   );
 
   assert.match(markup, />Department</);
-  assert.match(markup, /<option value="IT">IT<\/option>/);
-  assert.match(markup, /<option value="Finance">Finance<\/option>/);
+  assert.match(markup, /<option value="IT"><\/option>/);
+  assert.match(markup, /<option value="Finance"><\/option>/);
   assert.match(markup, />Priority</);
   assert.match(markup, /<option>Low<\/option>/);
   assert.match(markup, /<option(?: selected="")?>Medium<\/option>/);

@@ -4,6 +4,7 @@ import type { ResultSetHeader, RowDataPacket } from 'mysql2';
 
 import { getDeviceDbPool } from '../db/mysql';
 import type { Device, DeviceStatus, DeviceType, IpMode } from '../../types';
+import { syncWarrantyAlert } from './warrantyAlerts';
 
 export { type DeviceStatus, type DeviceType, type IpMode } from '../../types';
 
@@ -36,7 +37,9 @@ export interface DeviceRepository {
   list(): Promise<Device[]>;
   updateStatus(deviceId: string, status: DeviceStatus): Promise<Device>;
   updateAssignedTo(deviceId: string, assignedTo: string): Promise<Device>;
+  updateWarrantyAlertedAt(deviceId: string, warrantyAlertedAt?: string): Promise<Device>;
   upsertMany(devices: Device[]): Promise<void>;
+  delete(deviceId: string): Promise<void>;
 }
 
 interface DemoDeviceStore {
@@ -67,6 +70,7 @@ interface DeviceRow extends RowDataPacket {
   notes: string | null;
   createdAt: Date | string | null;
   updatedAt: Date | string | null;
+  warrantyAlertedAt: Date | string | null;
 }
 
 const deviceTypes: DeviceType[] = ['Laptop', 'PC', 'Server', 'Notebook', 'Desktop', 'Unknown'];
@@ -152,7 +156,8 @@ export async function createDevice(
 }
 
 export async function listDevices(repository: DeviceRepository = getDefaultDeviceRepository()) {
-  return repository.list();
+  const devices = await repository.list();
+  return syncDeviceWarrantyAlerts(devices, repository);
 }
 
 export async function updateDeviceStatus(
@@ -182,6 +187,46 @@ export async function upsertDevices(
   await repository.upsertMany(devices.map((device) => normalizeStoredDevice(device)));
 }
 
+export async function deleteDevice(
+  deviceId: string,
+  repository: DeviceRepository = getDefaultDeviceRepository()
+) {
+  await repository.delete(normalizeDeviceId(deviceId));
+}
+
+export function normalizeTimestampForSql(value: string | undefined) {
+  const normalized = normalizeTimestamp(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  return new Date(normalized);
+}
+
+async function syncDeviceWarrantyAlerts(devices: Device[], repository: DeviceRepository) {
+  const synchronizedDevices = [...devices];
+
+  for (const [index, device] of devices.entries()) {
+    const alert = syncWarrantyAlert(device);
+    const nextAlertedAt = alert.nextAlertedAt;
+    const currentAlertedAt = normalizeTimestamp(device.warrantyAlertedAt);
+
+    if (currentAlertedAt === nextAlertedAt) {
+      synchronizedDevices[index] = {
+        ...device,
+        warrantyAlertedAt: nextAlertedAt,
+      };
+      continue;
+    }
+
+    const updated = await repository.updateWarrantyAlertedAt(device.deviceId, nextAlertedAt);
+    synchronizedDevices[index] = updated;
+  }
+
+  return synchronizedDevices;
+}
+
 export function getDefaultDeviceRepository() {
   if (!defaultRepository) {
     defaultRepository = shouldUseDemoRepository()
@@ -202,8 +247,8 @@ export class MySqlDeviceRepository implements DeviceRepository {
         `INSERT INTO devices (
           deviceId, assetNo, ipMode, ipAddress, department, assignedTo, deviceType,
           model, hdd, ram, cpu, installDate, expireDatePrimary, expireDateSecondary,
-          warranty, yearValue, os, osLicense, msOfficeVersion, status, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          warranty, yearValue, os, osLicense, msOfficeVersion, status, notes, warrantyAlertedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         buildDeviceSqlValues(device)
       );
 
@@ -243,7 +288,8 @@ export class MySqlDeviceRepository implements DeviceRepository {
         status,
         notes,
         createdAt,
-        updatedAt
+        updatedAt,
+        warrantyAlertedAt
       FROM devices
       ORDER BY deviceId ASC`
     );
@@ -279,6 +325,20 @@ export class MySqlDeviceRepository implements DeviceRepository {
     return this.findByDeviceId(deviceId);
   }
 
+  async updateWarrantyAlertedAt(deviceId: string, warrantyAlertedAt?: string) {
+    const db = getConfiguredDeviceDbPool();
+    const [result] = await db.execute<ResultSetHeader>(
+      'UPDATE devices SET warrantyAlertedAt = ? WHERE deviceId = ?',
+      [normalizeTimestampForSql(warrantyAlertedAt), deviceId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new DeviceNotFoundError(deviceId);
+    }
+
+    return this.findByDeviceId(deviceId);
+  }
+
   async upsertMany(devices: Device[]) {
     const db = getConfiguredDeviceDbPool();
 
@@ -287,8 +347,8 @@ export class MySqlDeviceRepository implements DeviceRepository {
         `INSERT INTO devices (
           deviceId, assetNo, ipMode, ipAddress, department, assignedTo, deviceType,
           model, hdd, ram, cpu, installDate, expireDatePrimary, expireDateSecondary,
-          warranty, yearValue, os, osLicense, msOfficeVersion, status, notes
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          warranty, yearValue, os, osLicense, msOfficeVersion, status, notes, warrantyAlertedAt
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           assetNo = VALUES(assetNo),
           ipMode = VALUES(ipMode),
@@ -309,9 +369,22 @@ export class MySqlDeviceRepository implements DeviceRepository {
           osLicense = VALUES(osLicense),
           msOfficeVersion = VALUES(msOfficeVersion),
           status = VALUES(status),
-          notes = VALUES(notes)`,
+          notes = VALUES(notes),
+          warrantyAlertedAt = COALESCE(VALUES(warrantyAlertedAt), warrantyAlertedAt)`,
         buildDeviceSqlValues(normalizeStoredDevice(device))
       );
+    }
+  }
+
+  async delete(deviceId: string) {
+    const db = getConfiguredDeviceDbPool();
+    const [result] = await db.execute<ResultSetHeader>(
+      'DELETE FROM devices WHERE deviceId = ?',
+      [deviceId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new DeviceNotFoundError(deviceId);
     }
   }
 
@@ -341,7 +414,8 @@ export class MySqlDeviceRepository implements DeviceRepository {
         status,
         notes,
         createdAt,
-        updatedAt
+        updatedAt,
+        warrantyAlertedAt
       FROM devices
       WHERE deviceId = ?
       LIMIT 1`,
@@ -426,6 +500,29 @@ export class FileDeviceRepository implements DeviceRepository {
     });
   }
 
+  async updateWarrantyAlertedAt(deviceId: string, warrantyAlertedAt?: string) {
+    return this.enqueueWrite(async () => {
+      const store = await this.readStore();
+      const index = store.devices.findIndex((device) => sameDeviceId(device.deviceId, deviceId));
+
+      if (index === -1) {
+        throw new DeviceNotFoundError(deviceId);
+      }
+
+      const updated = {
+        ...store.devices[index],
+        warrantyAlertedAt,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const devices = store.devices.slice();
+      devices[index] = updated;
+      await this.writeStore({ devices });
+
+      return updated;
+    });
+  }
+
   async upsertMany(devices: Device[]) {
     await this.enqueueWrite(async () => {
       const store = await this.readStore();
@@ -444,6 +541,8 @@ export class FileDeviceRepository implements DeviceRepository {
                 ...existing,
                 ...normalized,
                 createdAt: existing.createdAt ?? normalized.createdAt,
+                warrantyAlertedAt:
+                  normalized.warrantyAlertedAt ?? existing.warrantyAlertedAt,
                 updatedAt: new Date().toISOString(),
               }
             : buildStoredDevice(normalized)
@@ -451,6 +550,19 @@ export class FileDeviceRepository implements DeviceRepository {
       }
 
       await this.writeStore({ devices: [...byDeviceId.values()] });
+    });
+  }
+
+  async delete(deviceId: string) {
+    await this.enqueueWrite(async () => {
+      const store = await this.readStore();
+      const index = store.devices.findIndex((device) => sameDeviceId(device.deviceId, deviceId));
+
+      if (index === -1) {
+        throw new DeviceNotFoundError(deviceId);
+      }
+
+      await this.writeStore({ devices: store.devices.filter((_, i) => i !== index) });
     });
   }
 
@@ -506,6 +618,7 @@ function buildDeviceSqlValues(device: CreateDeviceInput | Device) {
     device.msOfficeVersion,
     device.status,
     device.notes,
+    'warrantyAlertedAt' in device ? normalizeTimestampForSql(device.warrantyAlertedAt) : null,
   ];
 }
 
@@ -534,6 +647,7 @@ function mapDeviceRow(row: DeviceRow): Device {
     notes: row.notes ?? '',
     createdAt: normalizeTimestamp(row.createdAt),
     updatedAt: normalizeTimestamp(row.updatedAt),
+    warrantyAlertedAt: normalizeTimestamp(row.warrantyAlertedAt),
   };
 }
 
@@ -564,6 +678,7 @@ function buildStoredDevice(device: CreateDeviceInput | Device): Device {
     notes: device.notes,
     createdAt: 'createdAt' in device ? device.createdAt ?? now : now,
     updatedAt: now,
+    warrantyAlertedAt: 'warrantyAlertedAt' in device ? normalizeTimestamp(device.warrantyAlertedAt) : undefined,
   };
 }
 
@@ -625,6 +740,7 @@ function normalizeStoredDevice(record: unknown): Device {
     notes: normalizeOptionalText(record.notes),
     createdAt: normalizeTimestamp(record.createdAt),
     updatedAt: normalizeTimestamp(record.updatedAt),
+    warrantyAlertedAt: normalizeTimestamp(record.warrantyAlertedAt),
   };
 }
 
@@ -683,14 +799,6 @@ function normalizeDeviceIdForMap(deviceId: string) {
 
 function sameDeviceId(left: string, right: string) {
   return normalizeDeviceIdForMap(left) === normalizeDeviceIdForMap(right);
-}
-
-function normalizeDeviceType(value: unknown): DeviceType {
-  if (!isDeviceType(value)) {
-    throw new DeviceValidationError('Choose a valid device type.');
-  }
-
-  return value;
 }
 
 function normalizeCreateDeviceType(value: unknown): DeviceType {

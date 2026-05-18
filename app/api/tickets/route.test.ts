@@ -77,6 +77,44 @@ test('GET /api/tickets and POST /api/tickets persist tickets', async () => {
   }
 });
 
+test('GET /api/tickets and POST /api/tickets reject unauthenticated requests in production', async () => {
+  const originalEnv = captureEnv([...ENV_KEYS, ...DB_ENV_KEYS]);
+
+  setEnvValue('NODE_ENV', 'production');
+  clearEnv(DB_ENV_KEYS);
+  resetDefaultTicketRepositoryForTest();
+
+  try {
+    const getResponse = await GET(new Request('http://localhost:3000/api/tickets'));
+    const getBody = (await getResponse.json()) as { error?: string };
+
+    assert.equal(getResponse.status, 401);
+    assert.match(getBody.error ?? '', /authentication required/i);
+
+    const postResponse = await POST(
+      new Request('http://localhost:3000/api/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceName: 'OptiPlex 360',
+          employeeName: 'chakrit',
+          employeeEmail: 'chakrit@car-1996.com',
+          department: 'IT',
+          problemType: 'Hardware Failure',
+          description: 'No display after boot.',
+        }),
+      })
+    );
+    const postBody = (await postResponse.json()) as { error?: string };
+
+    assert.equal(postResponse.status, 401);
+    assert.match(postBody.error ?? '', /authentication required/i);
+  } finally {
+    resetDefaultTicketRepositoryForTest();
+    restoreEnv(originalEnv);
+  }
+});
+
 test('POST /api/tickets does not persist when recipient validation fails', async () => {
   const tempDir = await mkdtemp(join(tmpdir(), 'my-itapp-tickets-'));
   const storePath = join(tempDir, 'tickets.json');
@@ -165,6 +203,46 @@ test('POST /api/tickets returns 400 for malformed JSON and service validation er
 
     assert.equal(invalidPriorityResponse.status, 400);
     assert.match(invalidPriorityResult.error ?? '', /priority must be Low, Medium, High, or Critical/i);
+  } finally {
+    setTicketNotificationDispatcherForTest(null);
+    resetDefaultTicketRepositoryForTest();
+    restoreEnv(originalEnv);
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test('POST /api/tickets with notifyRecipients: [] creates ticket silently and returns 201', async () => {
+  const tempDir = await mkdtemp(join(tmpdir(), 'my-itapp-tickets-'));
+  const storePath = join(tempDir, 'tickets.json');
+  const originalEnv = captureEnv([...ENV_KEYS, ...DB_ENV_KEYS]);
+
+  setEnvValue('NODE_ENV', 'test');
+  setEnvValue('TICKET_DEMO_STORE_PATH', storePath);
+  clearEnv(DB_ENV_KEYS);
+  resetDefaultTicketRepositoryForTest();
+  setTicketNotificationDispatcherForTest(() => undefined);
+
+  try {
+    const response = await POST(
+      new Request('http://localhost:3000/api/tickets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          deviceName: 'OptiPlex 360',
+          employeeName: 'chakrit',
+          employeeEmail: 'chakrit@car-1996.com',
+          department: 'IT',
+          problemType: 'Hardware Failure',
+          description: 'No display after boot.',
+          notifyRecipients: [],
+        }),
+      })
+    );
+    const result = (await response.json()) as { ticket?: { id?: string; status?: string } };
+
+    assert.equal(response.status, 201);
+    assert.ok(result.ticket?.id, 'ticket must be created');
+    assert.equal(result.ticket?.status, 'Pending');
   } finally {
     setTicketNotificationDispatcherForTest(null);
     resetDefaultTicketRepositoryForTest();

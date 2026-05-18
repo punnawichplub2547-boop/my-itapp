@@ -1,41 +1,72 @@
 "use client";
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import Image from 'next/image';
 import { motion, AnimatePresence } from 'motion/react';
-import { Ticket, HelpCircle, PlusCircle, Search, Laptop, CheckCircle2, Clock, LogOut, FileType, Send, Filter, MessageSquare, Mail, History, X } from 'lucide-react';
-import { MOCK_NOTIFICATIONS, MOCK_TICKETS } from '../data/mockData';
+import { Ticket, HelpCircle, PlusCircle, Search, Laptop, CheckCircle2, Clock, LogOut, FileType, Send, Filter, MessageSquare, Mail, History, Loader2, X } from 'lucide-react';
 import { RepairTicket } from '../types';
 
 export default function TicketManagementCenter({
-  tickets = MOCK_TICKETS,
+  tickets = [],
   selectedId,
   onSelectTicket,
   onTicketUpdated = () => {},
   onTicketDeleted = () => {},
+  initialSearchQuery = '',
 }: {
   tickets?: RepairTicket[];
   selectedId: string | null;
   onSelectTicket: (id: string | null) => void;
   onTicketUpdated?: (ticket: RepairTicket) => void;
   onTicketDeleted?: (ticketId: string) => void;
+  initialSearchQuery?: string;
 }) {
   const [activeTab, setActiveTab] = useState('All Open Tickets');
+  const [searchQuery, setSearchQuery] = useState(initialSearchQuery);
+  const [sortMode, setSortMode] = useState<'newest' | 'priority' | 'oldest'>('newest');
 
   const openTickets = tickets.filter(t => t.status !== 'Completed' && t.status !== 'Closed');
   const closedTickets = tickets.filter(t => t.status === 'Completed' || t.status === 'Closed');
 
   const tabs = [
-    { id: 'Assigned to Me', count: openTickets.length },
     { id: 'All Open Tickets', count: openTickets.length },
     { id: 'Completed / Closed', count: closedTickets.length },
   ];
 
   const filteredTickets = tickets.filter(t => {
-    if (activeTab === 'Assigned to Me') return t.status !== 'Completed' && t.status !== 'Closed';
-    if (activeTab === 'All Open Tickets') return t.status !== 'Completed' && t.status !== 'Closed';
-    if (activeTab === 'Completed / Closed') return t.status === 'Completed' || t.status === 'Closed';
-    return true;
+    const normalizedSearchQuery = searchQuery.trim().toLowerCase();
+    const matchesSearch =
+      normalizedSearchQuery.length === 0 ||
+      t.id.toLowerCase().includes(normalizedSearchQuery) ||
+      t.deviceName.toLowerCase().includes(normalizedSearchQuery) ||
+      t.employeeName.toLowerCase().includes(normalizedSearchQuery) ||
+      t.employeeEmail.toLowerCase().includes(normalizedSearchQuery) ||
+      t.department.toLowerCase().includes(normalizedSearchQuery) ||
+      t.problemType.toLowerCase().includes(normalizedSearchQuery) ||
+      t.description.toLowerCase().includes(normalizedSearchQuery) ||
+      t.status.toLowerCase().includes(normalizedSearchQuery) ||
+      t.priority.toLowerCase().includes(normalizedSearchQuery);
+
+    if (activeTab === 'All Open Tickets') {
+      return matchesSearch && t.status !== 'Completed' && t.status !== 'Closed';
+    }
+    if (activeTab === 'Completed / Closed') {
+      return matchesSearch && (t.status === 'Completed' || t.status === 'Closed');
+    }
+    return matchesSearch;
   });
+  const priorityRank: Record<RepairTicket['priority'], number> = { Critical: 3, High: 2, Medium: 1, Low: 0 };
+  const sortedTickets = [...filteredTickets].sort((a, b) => {
+    if (sortMode === 'priority') {
+      const diff = priorityRank[b.priority] - priorityRank[a.priority];
+      if (diff !== 0) return diff;
+    }
+    if (sortMode === 'oldest') {
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    }
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  });
+  const selectedTicket = selectedId ? tickets.find((t) => t.id === selectedId) ?? null : null;
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-8 min-h-screen">
@@ -69,16 +100,22 @@ export default function TicketManagementCenter({
             <div className="relative w-48">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-outline" />
               <input 
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
                 placeholder="Search tickets..." 
                 className="w-full pl-9 pr-4 py-1.5 bg-white border border-outline-variant rounded-lg text-xs outline-none focus:border-primary"
               />
             </div>
             <div className="flex items-center gap-2">
               <Filter className="w-4 h-4 text-secondary" />
-              <select className="bg-white border-0 text-[10px] font-bold text-primary uppercase outline-none cursor-pointer">
-                <option>Newest First</option>
-                <option>Priority: High</option>
-                <option>Oldest First</option>
+              <select
+                value={sortMode}
+                onChange={(e) => setSortMode(e.target.value as 'newest' | 'priority' | 'oldest')}
+                className="bg-white border-0 text-[10px] font-bold text-primary uppercase outline-none cursor-pointer"
+              >
+                <option value="newest">Newest First</option>
+                <option value="priority">Priority: High</option>
+                <option value="oldest">Oldest First</option>
               </select>
             </div>
           </div>
@@ -97,7 +134,7 @@ export default function TicketManagementCenter({
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/30 text-xs">
-              {filteredTickets.map(ticket => (
+              {sortedTickets.map(ticket => (
                 <tr 
                   key={ticket.id} 
                   onClick={() => onSelectTicket(ticket.id)}
@@ -145,17 +182,17 @@ export default function TicketManagementCenter({
         <div className="p-6 bg-surface-container-low border-t border-outline-variant flex justify-between items-center text-[10px] font-black font-mono text-secondary uppercase tracking-widest">
           <span>{filteredTickets.length} items found in this category</span>
           <div className="flex gap-4">
-            <button className="hover:text-primary">Download Report</button>
-            <button className="hover:text-primary">Archive All</button>
+            <button disabled title="Coming soon" className="hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">Download Report</button>
+            <button disabled title="Coming soon" className="hover:text-primary disabled:opacity-50 disabled:cursor-not-allowed">Archive All</button>
           </div>
         </div>
       </div>
 
       <AnimatePresence>
-        {selectedId && (
+        {selectedTicket && (
           <TicketDetailModal
-            key={selectedId}
-            ticket={tickets.find(t => t.id === selectedId) || filteredTickets[0]}
+            key={selectedTicket.id}
+            ticket={selectedTicket}
             onClose={() => onSelectTicket(null)}
             onTicketUpdated={onTicketUpdated}
             onTicketDeleted={onTicketDeleted}
@@ -187,9 +224,64 @@ function TicketDetailModal({
   const [localTicket, setLocalTicket] = useState<RepairTicket>(ticket);
   const [activeTab, setActiveTab] = useState('notes');
   const [emailStatus, setEmailStatus] = useState<'idle' | 'preview' | 'sent'>('idle');
+  const [emailPanelStatus, setEmailPanelStatus] = useState<RepairTicket['status']>(ticket.status);
   const [noteText, setNoteText] = useState('');
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateError, setUpdateError] = useState<string | null>(null);
+  const [isUploadingAttachment, setIsUploadingAttachment] = useState(false);
+  const [attachmentError, setAttachmentError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  async function handleAttachmentUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    setAttachmentError(null);
+    setIsUploadingAttachment(true);
+    try {
+      const body = new FormData();
+      body.append('file', file);
+      const response = await fetch(`/api/tickets/${localTicket.id}/attachments`, {
+        method: 'POST',
+        body,
+      });
+      const result = await response.json() as { ticket?: RepairTicket; error?: string };
+      if (!response.ok) {
+        setAttachmentError(result.error ?? 'Failed to upload attachment.');
+        return;
+      }
+      if (result.ticket) {
+        setLocalTicket(result.ticket);
+        onTicketUpdated(result.ticket);
+      }
+    } catch {
+      setAttachmentError('Network error. Please try again.');
+    } finally {
+      setIsUploadingAttachment(false);
+    }
+  }
+
+  async function handleAttachmentDelete(attachmentId: string) {
+    setAttachmentError(null);
+    try {
+      const response = await fetch(
+        `/api/tickets/${localTicket.id}/attachments/${attachmentId}`,
+        { method: 'DELETE' }
+      );
+      const result = await response.json() as { ticket?: RepairTicket; error?: string };
+      if (!response.ok) {
+        setAttachmentError(result.error ?? 'Failed to delete attachment.');
+        return;
+      }
+      if (result.ticket) {
+        setLocalTicket(result.ticket);
+        onTicketUpdated(result.ticket);
+      }
+    } catch {
+      setAttachmentError('Network error. Please try again.');
+    }
+  }
 
   async function handleStatusShift(nextStatus: RepairTicket['status']) {
     if (nextStatus === localTicket.status || isUpdating) return;
@@ -208,7 +300,54 @@ function TicketDetailModal({
       }
       const updated = result.ticket as RepairTicket;
       setLocalTicket(updated);
+      setEmailPanelStatus(updated.status); // keep email panel in sync
       onTicketUpdated(updated);
+    } catch {
+      setUpdateError('Network error. Please try again.');
+    } finally {
+      setIsUpdating(false);
+    }
+  }
+
+  async function handleSendEmailUpdate() {
+    if (isUpdating) return;
+    setIsUpdating(true);
+    setUpdateError(null);
+    try {
+      // Step 1: If status changed in email panel, update it first (no auto-notification)
+      if (emailPanelStatus !== localTicket.status) {
+        const statusRes = await fetch(`/api/tickets/${localTicket.id}/status`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            previousStatus: localTicket.status,
+            nextStatus: emailPanelStatus,
+            ticket: localTicket,
+            notifyRecipients: [], // status-only — email will be sent via notify below
+          }),
+        });
+        const statusResult = await statusRes.json() as { ticket?: RepairTicket; error?: string };
+        if (!statusRes.ok) {
+          setUpdateError(statusResult.error ?? 'Failed to update status.');
+          return;
+        }
+        if (statusResult.ticket) {
+          setLocalTicket(statusResult.ticket);
+          onTicketUpdated(statusResult.ticket);
+        }
+      }
+
+      // Step 2: Send email with attachments via notify route
+      const response = await fetch(`/api/tickets/${localTicket.id}/notify`, {
+        method: 'POST',
+      });
+      if (!response.ok) {
+        const result = await response.json() as { error?: string };
+        setUpdateError(result.error ?? 'Failed to send email update.');
+        return;
+      }
+      setEmailStatus('sent');
+      setTimeout(() => setEmailStatus('idle'), 3000);
     } catch {
       setUpdateError('Network error. Please try again.');
     } finally {
@@ -359,10 +498,62 @@ function TicketDetailModal({
             <div>
               <h4 className="text-[10px] font-black text-secondary uppercase tracking-[0.2em] mb-4 pl-1">Attachments</h4>
               <div className="bg-white border border-outline-variant p-4 rounded-2xl grid grid-cols-3 gap-3 shadow-sm">
-                <div className="aspect-square bg-surface-container rounded-xl flex items-center justify-center border border-outline-variant/40 hover:border-primary cursor-pointer transition-all">
-                  <PlusCircle className="text-outline w-6 h-6 hover:text-primary" />
-                </div>
+                {(localTicket.attachments ?? []).map((att) => (
+                  <div
+                    key={att.id}
+                    className="group relative aspect-square rounded-xl overflow-hidden border border-outline-variant/40 bg-surface-container"
+                  >
+                    <a
+                      href={att.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={att.fileName}
+                      className="absolute inset-0"
+                    >
+                      <Image
+                        src={att.url}
+                        alt={att.fileName}
+                        fill
+                        sizes="120px"
+                        className="object-cover"
+                        unoptimized
+                      />
+                    </a>
+                    <button
+                      type="button"
+                      onClick={() => { void handleAttachmentDelete(att.id); }}
+                      title="Remove attachment"
+                      className="absolute top-1 right-1 z-10 p-1 rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100 hover:bg-error transition-all"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+                {isUploadingAttachment ? (
+                  <div className="aspect-square bg-surface-container rounded-xl flex items-center justify-center border border-outline-variant/40">
+                    <Loader2 className="text-outline w-6 h-6 animate-spin" />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Upload image attachment"
+                    className="aspect-square bg-surface-container rounded-xl flex items-center justify-center border border-outline-variant/40 hover:border-primary cursor-pointer transition-all"
+                  >
+                    <PlusCircle className="text-outline w-6 h-6 hover:text-primary" />
+                  </button>
+                )}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  onChange={(event) => { void handleAttachmentUpload(event); }}
+                  className="hidden"
+                />
               </div>
+              {attachmentError && (
+                <p className="mt-2 text-[10px] font-bold text-error">{attachmentError}</p>
+              )}
             </div>
           </div>
 
@@ -461,53 +652,31 @@ function TicketDetailModal({
                     </div>
                   </div>
 
-                  {/* Notification Timeline history */}
+                  {/* Activity Timeline */}
                   <div className="bg-white border-2 border-outline-variant rounded-2xl p-6 space-y-6 shadow-sm">
                     <div className="flex items-center justify-between">
                       <h6 className="text-[10px] font-black text-primary uppercase tracking-[0.2em] flex items-center gap-2">
-                        <History size={14} /> Notification History
+                        <History size={14} /> Activity Timeline
                       </h6>
                       <div className="text-[9px] font-black text-outline uppercase tracking-widest">
-                        {MOCK_NOTIFICATIONS.filter(n => n.ticketId === localTicket.id).length} Entries
+                        {(localTicket.history ?? []).length} Entries
                       </div>
                     </div>
-                    
+
                     <div className="relative pl-6 space-y-8 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-0.5 before:bg-outline-variant/30">
-                      {MOCK_NOTIFICATIONS.filter(n => n.ticketId === localTicket.id).map((notif) => (
-                        <div key={notif.id} className="relative group">
-                          {/* Dot */}
-                          <div className={`absolute -left-6 top-1.5 w-4 h-4 rounded-full border-2 bg-white z-10 flex items-center justify-center transition-all group-hover:scale-110 shadow-sm ${
-                            notif.deliveryStatus === 'Delivered' ? 'border-green-500' :
-                            notif.deliveryStatus === 'Sent' ? 'border-blue-500' : 
-                            notif.deliveryStatus === 'Pending' ? 'border-amber-500' : 'border-red-500'
-                          }`}>
-                            {notif.deliveryStatus === 'Delivered' && <CheckCircle2 size={8} className="text-green-500" />}
-                            {(notif.deliveryStatus === 'Sent' || notif.deliveryStatus === 'Pending') && <div className={`w-1 h-1 rounded-full ${notif.deliveryStatus === 'Sent' ? 'bg-blue-500' : 'bg-amber-500'}`} />}
-                            {notif.deliveryStatus === 'Failed' && <X size={8} className="text-red-500" />}
+                      {(localTicket.history ?? []).map((h) => (
+                        <div key={h.id} className="relative group">
+                          <div className="absolute -left-6 top-1.5 w-4 h-4 rounded-full border-2 border-primary bg-white z-10 flex items-center justify-center transition-all group-hover:scale-110 shadow-sm">
+                            <div className="w-1.5 h-1.5 rounded-full bg-primary" />
                           </div>
-                          
-                          <div className="bg-surface-container-low/50 p-4 rounded-xl border border-outline-variant/30 hover:border-primary/40 transition-all cursor-pointer">
-                            <div className="flex justify-between items-start mb-2">
-                              <div>
-                                <h5 className="text-[11px] font-black text-primary uppercase tracking-tight">{notif.notificationType}</h5>
-                                <p className="text-[10px] text-outline font-medium">Sent: {notif.sentAt}</p>
-                              </div>
-                              <span className={`text-[8px] font-black uppercase tracking-widest px-2 py-0.5 rounded border ${
-                                notif.deliveryStatus === 'Delivered' ? 'bg-green-50 text-green-700 border-green-200' :
-                                notif.deliveryStatus === 'Sent' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                                notif.deliveryStatus === 'Pending' ? 'bg-amber-50 text-amber-700 border-amber-200' : 'bg-red-50 text-red-700 border-red-200'
-                              }`}>
-                                {notif.deliveryStatus}
-                              </span>
-                            </div>
-                            <p className="text-[12px] text-secondary leading-relaxed italic border-l-2 border-primary/20 pl-3">
-                              {notif.subject}
-                            </p>
+                          <div className="bg-surface-container-low/50 p-4 rounded-xl border border-outline-variant/30 hover:border-primary/40 transition-all">
+                            <p className="text-[11px] font-black text-primary uppercase tracking-tight">{h.action}</p>
+                            <p className="text-[10px] text-outline font-medium mt-0.5">{h.user} · {formatTimestamp(h.timestamp)}</p>
                           </div>
                         </div>
                       ))}
-                      {MOCK_NOTIFICATIONS.filter(n => n.ticketId === localTicket.id).length === 0 && (
-                        <p className="text-[10px] text-outline text-center py-4 italic font-medium tracking-widest">No notification logs found for this ticket.</p>
+                      {(localTicket.history ?? []).length === 0 && (
+                        <p className="text-[10px] text-outline text-center py-4 italic font-medium tracking-widest">No activity history for this ticket.</p>
                       )}
                     </div>
                   </div>
@@ -525,13 +694,29 @@ function TicketDetailModal({
                       <div className="space-y-4">
                         <p className="text-sm font-medium">Hello {localTicket.employeeName},</p>
                         <p className="text-sm text-secondary leading-relaxed">This is an update regarding your repair request for the <span className="font-bold text-primary">{localTicket.deviceName}</span>.</p>
-                        <div className="bg-white border-2 border-outline-variant p-4 rounded-xl flex items-center justify-between">
-                          <span className="text-xs font-black uppercase text-outline">Current Status</span>
-                          <span className="px-3 py-1 rounded-lg bg-primary text-white font-black uppercase text-[10px] tracking-widest">{localTicket.status}</span>
+                        <div className="bg-white border-2 border-outline-variant p-4 rounded-xl flex items-center justify-between gap-4">
+                          <span className="text-xs font-black uppercase text-outline shrink-0">Current Status</span>
+                          <select
+                            value={emailPanelStatus}
+                            onChange={(e) => setEmailPanelStatus(e.target.value as RepairTicket['status'])}
+                            disabled={isUpdating}
+                            className="px-3 py-1 rounded-lg bg-primary text-white font-black uppercase text-[10px] tracking-widest border-none outline-none cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed appearance-none text-center"
+                          >
+                            {(['Pending', 'In Progress', 'Waiting for Parts', 'Completed', 'Closed'] as RepairTicket['status'][]).map((s) => (
+                              <option key={s} value={s} className="text-primary bg-white font-bold normal-case tracking-normal">
+                                {s}
+                              </option>
+                            ))}
+                          </select>
                         </div>
                         <div className="p-4 bg-tertiary-container/10 border border-tertiary/20 rounded-xl space-y-2">
                           <p className="text-[9px] font-black text-tertiary uppercase tracking-widest">Technician Note:</p>
-                          <p className="text-xs italic text-secondary leading-relaxed">&quot;Waiting for replacement parts. We will finalize the hardware replacement once components arrive at our central warehouse.&quot;</p>
+                          {(() => {
+                            const latestNote = (localTicket.notes ?? []).at(-1) ?? null;
+                            return latestNote
+                              ? <p className="text-xs italic text-secondary leading-relaxed">&quot;{latestNote.content}&quot;</p>
+                              : <p className="text-xs italic text-secondary leading-relaxed">No notes added to this ticket yet.</p>;
+                          })()}
                         </div>
                         <p className="text-sm text-secondary">Thank you for your patience.</p>
                         <div className="pt-6 border-t border-outline-variant/50">
@@ -542,28 +727,21 @@ function TicketDetailModal({
                     </div>
                   </div>
 
-                  <div className="flex gap-4">
-                    <button 
-                      onClick={() => {
-                        setEmailStatus('sent');
-                        setTimeout(() => setEmailStatus('idle'), 2000);
-                      }}
-                      className="flex-1 bg-primary text-white py-4 rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-primary/20 hover:bg-primary-container transition-all flex items-center justify-center gap-3 active:scale-[0.98]"
-                    >
-                      {emailStatus === 'sent' ? (
-                        <>
-                          <CheckCircle2 size={18} /> Notification Sent
-                        </>
-                      ) : (
-                        <>
-                          <Send size={16} /> Send Email Update
-                        </>
-                      )}
-                    </button>
-                    <button className="px-6 py-4 border-2 border-outline-variant text-[11px] font-black uppercase tracking-widest text-primary rounded-2xl hover:bg-primary/5 transition-all">
-                      Print Detail
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => { void handleSendEmailUpdate(); }}
+                    disabled={isUpdating}
+                    className="w-full bg-primary text-white py-4 rounded-2xl font-black uppercase text-[11px] tracking-[0.2em] shadow-xl shadow-primary/20 hover:bg-primary-container transition-all flex items-center justify-center gap-3 active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {emailStatus === 'sent' ? (
+                      <>
+                        <CheckCircle2 size={18} /> Notification Sent
+                      </>
+                    ) : (
+                      <>
+                        <Send size={16} /> Send Email Update
+                      </>
+                    )}
+                  </button>
                 </div>
               )}
             </div>

@@ -95,6 +95,14 @@ class InMemoryTicketRepository implements TicketRepository {
     assert.ok(index !== -1, `Expected ticket ${ticketId} to exist`);
     this.tickets.splice(index, 1);
   }
+
+  async listCompletedWithin() {
+    return [];
+  }
+
+  async deleteCompletedOlderThan() {
+    return 0;
+  }
 }
 
 class FakeTransactionConnection {
@@ -421,6 +429,12 @@ test('rejects missing tickets through the exported service helper', async () => 
     async deleteById(ticketId: string) {
       throw new TicketNotFoundError(ticketId);
     },
+    async listCompletedWithin() {
+      return [];
+    },
+    async deleteCompletedOlderThan() {
+      return 0;
+    },
   };
 
   await assert.rejects(() => findTicketById('TK-missing', repository), TicketNotFoundError);
@@ -585,7 +599,7 @@ test('uses a UTC-safe created_at value and transaction locking for mysql updates
   });
 
   assert.equal(connection.executeCalls[0]?.sql.startsWith('INSERT INTO repair_tickets'), true);
-  assert.match(String(connection.executeCalls[0]?.params?.[8]), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
+  assert.match(String(connection.executeCalls[0]?.params?.[9]), /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/);
   assert.match(created.createdAt, /^\d{4}-\d{2}-\d{2}T/);
 
   connection.row = {

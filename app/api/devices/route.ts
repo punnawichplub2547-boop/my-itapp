@@ -5,10 +5,17 @@ import {
   DuplicateDeviceIdError,
   listDevices,
 } from '../../lib/devices/deviceService';
+import { requireAuthenticatedRequest } from '../../lib/auth/mockUser';
 
 export const runtime = 'nodejs';
 
-export async function GET() {
+export async function GET(request?: Request) {
+  const unauthorizedResponse = requireAuthenticatedRequest(request);
+
+  if (unauthorizedResponse) {
+    return unauthorizedResponse;
+  }
+
   try {
     const devices = await listDevices();
     return Response.json({ devices });
@@ -33,6 +40,12 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const unauthorizedResponse = requireAuthenticatedRequest(request);
+
+  if (unauthorizedResponse) {
+    return unauthorizedResponse;
+  }
+
   let body: unknown;
 
   try {

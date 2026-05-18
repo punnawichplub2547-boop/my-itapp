@@ -27,6 +27,17 @@ export class InMemoryEmailQueue {
     }, 0);
   }
 
+  /** Process a job immediately and return a Promise — use inside after() so the runtime stays alive until the email is sent. */
+  async send(job: EmailJob): Promise<void> {
+    this.results.set(job.id, {
+      job,
+      status: 'queued',
+      updatedAt: new Date().toISOString(),
+    });
+
+    await this.process(job);
+  }
+
   getResult(jobId: string): EmailJobResult | undefined {
     return this.results.get(jobId);
   }

@@ -33,9 +33,18 @@ CREATE TABLE devices (
   msOfficeVersion VARCHAR(120) NOT NULL DEFAULT '',
   status ENUM('Active', 'Inactive', 'Out of Service') NOT NULL DEFAULT 'Active',
   notes TEXT NULL,
+  warrantyAlertedAt DATETIME NULL,
   createdAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 );
 ```
 
 `deviceId` is the primary key and stable application identity. Assignment is mutable metadata stored in `assignedTo`, so reassigning a device does not change its identity or API route.
+
+## Additional Required Table
+
+The current app also persists device-linked repair events for Inventory Detail > Repair Log.
+
+Create this table as well:
+
+- `docs/migrations/create_device_repair_events.sql`

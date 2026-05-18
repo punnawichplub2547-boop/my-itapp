@@ -8,6 +8,8 @@ import {
   createDevice,
   listDevices,
   normalizeCreateDeviceInput,
+  normalizeTimestampForSql,
+  upsertDevices,
   updateDeviceAssignedTo,
   updateDeviceStatus,
 } from './deviceService';
@@ -102,6 +104,14 @@ test('rejects non-object device input', () => {
   assert.throws(() => normalizeCreateDeviceInput(null), /Device payload must be an object/);
 });
 
+test('normalizes warranty alert timestamps into mysql-safe Date values', () => {
+  const normalized = normalizeTimestampForSql('2026-05-13T00:00:00.000Z');
+
+  assert.ok(normalized instanceof Date);
+  assert.equal(normalized?.toISOString(), '2026-05-13T00:00:00.000Z');
+  assert.equal(normalizeTimestampForSql(undefined), null);
+});
+
 test('creates a device keyed by deviceId instead of a generated id', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'repairlink-devices-'));
   const filePath = join(directory, 'devices.json');
@@ -193,6 +203,72 @@ test('updates saved device assignment by deviceId', async () => {
     assert.equal(updated.deviceId, 'CAR200');
     assert.equal(updated.assignedTo, 'new.user');
     assert.equal(devices[0].assignedTo, 'new.user');
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('listing devices stamps warranty alerts without deleting the saved device record', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'repairlink-devices-'));
+  const filePath = join(directory, 'devices.json');
+  const repository = new FileDeviceRepository(filePath);
+  const expiringDate = new Date();
+  expiringDate.setUTCDate(expiringDate.getUTCDate() + 10);
+
+  try {
+    await createDevice(
+      {
+        ...baseInput,
+        deviceId: 'CAR201',
+        expireDatePrimary: expiringDate.toISOString().slice(0, 10),
+        expireDateSecondary: '',
+      },
+      repository
+    );
+
+    const devices = await listDevices(repository);
+    const persisted = JSON.parse(await readFile(filePath, 'utf8')) as {
+      devices: Array<{ deviceId: string; warrantyAlertedAt?: string }>;
+    };
+
+    assert.equal(devices.length, 1);
+    assert.equal(devices[0].deviceId, 'CAR201');
+    assert.ok(devices[0].warrantyAlertedAt);
+    assert.equal(persisted.devices.length, 1);
+    assert.equal(persisted.devices[0].deviceId, 'CAR201');
+    assert.ok(persisted.devices[0].warrantyAlertedAt);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('listing devices clears stale warranty alert timestamps when the device no longer qualifies', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'repairlink-devices-'));
+  const filePath = join(directory, 'devices.json');
+  const repository = new FileDeviceRepository(filePath);
+  const farFutureDate = new Date();
+  farFutureDate.setUTCDate(farFutureDate.getUTCDate() + 90);
+
+  try {
+    await upsertDevices(
+      [
+        {
+          ...baseInput,
+          expireDatePrimary: farFutureDate.toISOString().slice(0, 10),
+          expireDateSecondary: '',
+          warrantyAlertedAt: new Date().toISOString(),
+        },
+      ],
+      repository
+    );
+
+    const devices = await listDevices(repository);
+    const persisted = JSON.parse(await readFile(filePath, 'utf8')) as {
+      devices: Array<{ warrantyAlertedAt?: string }>;
+    };
+
+    assert.equal(devices[0].warrantyAlertedAt, undefined);
+    assert.equal(persisted.devices[0].warrantyAlertedAt, undefined);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

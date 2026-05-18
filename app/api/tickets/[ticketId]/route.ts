@@ -1,9 +1,12 @@
 import {
   addTicketNote,
   deleteTicketById,
+  findTicketById,
   TicketNotFoundError,
   TicketValidationError,
 } from '../../../lib/tickets/ticketService';
+import { requireAuthenticatedRequest } from '../../../lib/auth/mockUser';
+import { appendDeviceRepairEvent } from '../../../lib/devices/deviceRepairEventService';
 
 export const runtime = 'nodejs';
 
@@ -11,6 +14,12 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
+  const unauthorizedResponse = requireAuthenticatedRequest(request);
+
+  if (unauthorizedResponse) {
+    return unauthorizedResponse;
+  }
+
   const { ticketId } = await params;
 
   let body: unknown;
@@ -47,10 +56,47 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ ticketId: string }> }
 ) {
+  const unauthorizedResponse = requireAuthenticatedRequest(request);
+
+  if (unauthorizedResponse) {
+    return unauthorizedResponse;
+  }
+
   const { ticketId } = await params;
+
+  // Fetch the ticket first to capture deviceId and metadata for the persistent event.
+  let ticketToDelete;
+  try {
+    ticketToDelete = await findTicketById(ticketId);
+  } catch (error) {
+    if (error instanceof TicketNotFoundError) {
+      return Response.json({ error: `Ticket ${ticketId} not found.` }, { status: 404 });
+    }
+    throw error;
+  }
+
+  // Write persistent deletion event before hard-deleting the ticket (best-effort).
+  if (ticketToDelete.deviceId) {
+    try {
+      await appendDeviceRepairEvent({
+        deviceId: ticketToDelete.deviceId,
+        ticketId: ticketToDelete.id,
+        eventType: 'ticket_deleted',
+        title: 'Ticket Deleted',
+        description: `Ticket deleted. Last status: ${ticketToDelete.status}. Reported by ${ticketToDelete.employeeName}: ${ticketToDelete.description}`,
+        problemType: ticketToDelete.problemType,
+        status: ticketToDelete.status,
+        reportedBy: ticketToDelete.employeeName,
+        createdAt: new Date().toISOString(),
+        source: 'ticket',
+      });
+    } catch {
+      // best-effort — do not block deletion
+    }
+  }
 
   try {
     await deleteTicketById(ticketId);

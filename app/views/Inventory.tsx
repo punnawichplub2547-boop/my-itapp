@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import {
   AlertCircle,
@@ -13,25 +13,30 @@ import {
   Search,
   Server,
   ShieldCheck,
+  Trash2,
   UserPlus,
   UserX,
   Wrench,
   X,
 } from 'lucide-react';
-import type { Device } from '../types';
+import type { Device, DeviceRepairEvent, RepairTicket } from '../types';
 import { getDeviceStatusBadgeColor, getDeviceStatusColor } from '../utils/status';
-import { downloadCsv } from '../utils/csv';
+import { filterDevices } from '../lib/devices/filterDevices';
 import {
   buildAssignmentHistory,
-  buildRepairLog,
+  buildConfirmedTicketEntries,
+  buildDeviceEvents,
+  buildInferredTicketEntries,
+  buildPersistedRepairLogEntries,
+  classifyRelatedTickets,
   deriveAssignmentIdentity,
   DEVICE_DETAIL_TABS,
   type DeviceDetailTabKey,
+  type MatchConfidence,
   formatDateValue,
   getDeviceDetailHeroSubtitle,
   getDeviceDetailHeroTitle,
   getWarrantySnapshot,
-  parseDeviceDate,
 } from './inventoryDetail';
 
 export const DEVICE_STATUS_OPTIONS: Device['status'][] = ['Active', 'Inactive', 'Out of Service'];
@@ -65,56 +70,6 @@ export function updateDeviceAssignment(devices: Device[], deviceId: string, assi
   );
 }
 
-const DEVICE_CSV_HEADERS = [
-  'No',
-  'Name',
-  'IP Address',
-  'Dept.',
-  'User Log on',
-  'TYPE',
-  'Model',
-  'HDD',
-  'RAM',
-  'CPU',
-  'Install Date',
-  'Expire Date',
-  'Expire Date',
-  'Waranty',
-  'Year',
-  'OS',
-  'OS Licens',
-  'MS Office V.',
-];
-
-function formatCsvDate(value: string | undefined): string {
-  if (!value?.trim() || value === '-') return '';
-  const parsed = parseDeviceDate(value);
-  return parsed ? parsed.toISOString().slice(0, 10) : value.trim();
-}
-
-function deviceToCsvRow(device: Device, index: number): string[] {
-  return [
-    String(index + 1),
-    device.deviceId,
-    device.ipAddress,
-    device.department,
-    device.assignedTo,
-    device.deviceType,
-    device.model,
-    device.hdd,
-    device.ram,
-    device.cpu,
-    formatCsvDate(device.installDate),
-    formatCsvDate(device.expireDatePrimary),
-    formatCsvDate(device.expireDateSecondary),
-    device.warranty,
-    device.yearValue,
-    device.os,
-    device.osLicense,
-    device.msOfficeVersion,
-  ];
-}
-
 export function paginateDevices(devices: Device[], page: number, pageSize = DEVICE_PAGE_SIZE) {
   const safePage = Math.max(1, page);
   const startIndex = (safePage - 1) * pageSize;
@@ -131,11 +86,13 @@ export function clampInventoryPage(page: number, totalPages: number) {
 
 export default function Inventory({
   devices = [],
+  tickets = [],
   onDevicesChange,
   initialSearchQuery = '',
   initialSelectedDeviceId,
 }: {
   devices?: Device[];
+  tickets?: RepairTicket[];
   onDevicesChange?: (devices: Device[]) => void;
   initialSearchQuery?: string;
   initialSelectedDeviceId?: string;
@@ -182,25 +139,11 @@ export default function Inventory({
     [currentDevices]
   );
 
-  const filteredDevices = currentDevices.filter((device) => {
-    const query = searchQuery.trim().toLowerCase();
-    const matchesSearch =
-      query.length === 0 ||
-      device.deviceId.toLowerCase().includes(query) ||
-      device.assetNo.toLowerCase().includes(query) ||
-      device.ipAddress.toLowerCase().includes(query) ||
-      device.department.toLowerCase().includes(query) ||
-      device.assignedTo.toLowerCase().includes(query) ||
-      device.model.toLowerCase().includes(query) ||
-      device.os.toLowerCase().includes(query);
-
-    const matchesDepartment =
-      departmentFilter === 'All' || device.department === departmentFilter;
-    const matchesDeviceType =
-      deviceTypeFilter === 'All' || device.deviceType === deviceTypeFilter;
-    const matchesOs = osFilter === 'All' || device.os === osFilter;
-
-    return matchesSearch && matchesDepartment && matchesDeviceType && matchesOs;
+  const filteredDevices = filterDevices(currentDevices, {
+    search: searchQuery,
+    department: departmentFilter,
+    deviceType: deviceTypeFilter,
+    os: osFilter,
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredDevices.length / DEVICE_PAGE_SIZE));
@@ -277,12 +220,65 @@ export default function Inventory({
     }
   }
 
-  function handleExportCsv() {
-    downloadCsv(
-      DEVICE_CSV_HEADERS,
-      filteredDevices.map((device, i) => deviceToCsvRow(device, i)),
-      `device-inventory-${new Date().toISOString().slice(0, 10)}.csv`
-    );
+  async function deleteDevice(deviceId: string) {
+    setInventoryError('');
+
+    const response = await fetch(`/api/devices/${encodeURIComponent(deviceId)}`, {
+      method: 'DELETE',
+    });
+    const result = await response.json();
+
+    if (!response.ok) {
+      throw new Error(result.error ?? 'Unable to delete the device.');
+    }
+
+    setDevices((items) => items.filter((device) => device.deviceId !== deviceId));
+    setSelectedDeviceId(null);
+  }
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  async function handleExportExcel() {
+    if (isExporting) return;
+    setInventoryError('');
+    setIsExporting(true);
+    try {
+      const params = new URLSearchParams();
+      if (searchQuery.trim()) params.set('search', searchQuery.trim());
+      if (departmentFilter !== 'All') params.set('department', departmentFilter);
+      if (deviceTypeFilter !== 'All') params.set('deviceType', deviceTypeFilter);
+      if (osFilter !== 'All') params.set('os', osFilter);
+
+      const queryString = params.toString();
+      const response = await fetch(
+        `/api/devices/export${queryString ? `?${queryString}` : ''}`
+      );
+
+      if (!response.ok) {
+        let message = 'Failed to export inventory.';
+        try {
+          const data = await response.json() as { error?: string };
+          if (data.error) message = data.error;
+        } catch {
+          // non-JSON error body
+        }
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `device-inventory-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setInventoryError(err instanceof Error ? err.message : 'Failed to export inventory.');
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   return (
@@ -293,17 +289,17 @@ export default function Inventory({
           <p className="font-medium text-secondary">MySQL-backed fleet records from the shared device API.</p>
         </div>
         <button
-          onClick={handleExportCsv}
-          disabled={filteredDevices.length === 0}
+          onClick={() => { void handleExportExcel(); }}
+          disabled={filteredDevices.length === 0 || isExporting}
           className="flex items-center gap-2 rounded-xl border border-outline-variant bg-white px-5 py-3 text-[11px] font-black uppercase tracking-widest text-primary shadow-sm transition-all hover:border-primary disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <FileSpreadsheet className="h-4 w-4" /> Export Report
+          <FileSpreadsheet className="h-4 w-4" /> {isExporting ? 'Exporting…' : 'Export Report'}
         </button>
       </div>
 
-      <section className="rounded-2xl border border-outline-variant bg-white p-4 shadow-sm shrink-0">
-        <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
-          <label className="relative block">
+      <section className="rounded-2xl border border-outline-variant bg-white p-5 shadow-sm shrink-0">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+          <label className="relative block lg:flex-[2]">
             <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-outline" />
             <input
               value={searchQuery}
@@ -315,33 +311,35 @@ export default function Inventory({
               className="w-full rounded-xl border border-outline-variant bg-surface-container-low py-3 pl-12 pr-4 text-sm font-medium outline-none transition-all focus:border-primary"
             />
           </label>
-          <FilterSelect
-            label="Department"
-            value={departmentFilter}
-            options={departmentOptions}
-            onChange={(value) => {
-              setDepartmentFilter(value);
-              setCurrentPage(1);
-            }}
-          />
-          <FilterSelect
-            label="Device Type"
-            value={deviceTypeFilter}
-            options={deviceTypeOptions}
-            onChange={(value) => {
-              setDeviceTypeFilter(value);
-              setCurrentPage(1);
-            }}
-          />
-          <FilterSelect
-            label="Operating System"
-            value={osFilter}
-            options={osOptions}
-            onChange={(value) => {
-              setOsFilter(value);
-              setCurrentPage(1);
-            }}
-          />
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3 lg:flex-[3] lg:grid-cols-3">
+            <FilterSelect
+              label="Department"
+              value={departmentFilter}
+              options={departmentOptions}
+              onChange={(value) => {
+                setDepartmentFilter(value);
+                setCurrentPage(1);
+              }}
+            />
+            <FilterSelect
+              label="Device Type"
+              value={deviceTypeFilter}
+              options={deviceTypeOptions}
+              onChange={(value) => {
+                setDeviceTypeFilter(value);
+                setCurrentPage(1);
+              }}
+            />
+            <FilterSelect
+              label="Operating System"
+              value={osFilter}
+              options={osOptions}
+              onChange={(value) => {
+                setOsFilter(value);
+                setCurrentPage(1);
+              }}
+            />
+          </div>
         </div>
         {inventoryError && (
           <div className="mt-4 flex items-start gap-2 rounded-xl border border-error/20 bg-error/5 px-4 py-3 text-xs font-bold text-error">
@@ -398,7 +396,7 @@ export default function Inventory({
                         <div className="min-w-0">
                           <p className="truncate font-bold text-primary">{device.assignedTo}</p>
                           <p className="truncate text-[10px] font-medium text-outline">
-                            String assignment field
+                            {deriveAssignmentIdentity(device.assignedTo)}
                           </p>
                         </div>
                       </div>
@@ -493,6 +491,7 @@ export default function Inventory({
           <DeviceDetailModal
             key={selectedDevice.deviceId}
             device={selectedDevice}
+            tickets={tickets}
             onClose={() => setSelectedDeviceId(null)}
             onEditAssignment={(deviceId) => {
               setSelectedDeviceId(null);
@@ -500,6 +499,7 @@ export default function Inventory({
               setIsAssignModalOpen(true);
             }}
             onSaveStatus={saveStatus}
+            onDeleteDevice={deleteDevice}
           />
         )}
         {isAssignModalOpen && targetDevice && (
@@ -558,21 +558,58 @@ function FilterSelect({
 
 export function DeviceDetailModal({
   device,
+  tickets = [],
   onClose,
   onEditAssignment,
   onSaveStatus,
+  onDeleteDevice,
 }: {
   device: Device;
+  tickets?: RepairTicket[];
   onClose: () => void;
   onEditAssignment: (deviceId: string) => void;
   onSaveStatus: (deviceId: string, status: Device['status']) => Promise<void>;
+  onDeleteDevice: (deviceId: string) => Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<DeviceDetailTabKey>('hardware-os');
   const [draftStatus, setDraftStatus] = useState<Device['status']>(device.status);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDeleteConfirming, setIsDeleteConfirming] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [showWeakMatches, setShowWeakMatches] = useState(false);
+  const [persistedRepairEvents, setPersistedRepairEvents] = useState<DeviceRepairEvent[]>([]);
+
+  useEffect(() => {
+    void fetch(`/api/devices/${encodeURIComponent(device.deviceId)}/repair-events`)
+      .then(async (r) => {
+        if (!r.ok) return [];
+        const data = (await r.json()) as { events?: unknown };
+        return Array.isArray(data.events) ? (data.events as DeviceRepairEvent[]) : [];
+      })
+      .then(setPersistedRepairEvents)
+      .catch(() => setPersistedRepairEvents([]));
+  }, [device.deviceId]);
+
   const warrantySnapshot = getWarrantySnapshot(device);
   const assignmentHistory = buildAssignmentHistory(device);
-  const repairLogEntries = buildRepairLog(device);
+  const deviceEvents = buildDeviceEvents(device);
+
+  // Tickets that already have a persistent event are shown via persistedEntries, not live data.
+  const persistedTicketIds = new Set(
+    persistedRepairEvents.map((e) => e.ticketId).filter((id): id is string => Boolean(id))
+  );
+  const liveConfirmedEntries = buildConfirmedTicketEntries(
+    device,
+    tickets.filter((t) => !persistedTicketIds.has(t.id))
+  );
+  const persistedEntries = buildPersistedRepairLogEntries(persistedRepairEvents);
+
+  const classifiedTickets = classifyRelatedTickets(device, tickets);
+  const strongMatches = classifiedTickets.filter((m) => m.matchConfidence !== 'low');
+  const weakMatches = classifiedTickets.filter((m) => m.matchConfidence === 'low');
+  const visibleInferredEntries = buildInferredTicketEntries(strongMatches);
+  const weakInferredEntries = buildInferredTicketEntries(weakMatches);
 
   async function handleSave() {
     setIsSaving(true);
@@ -582,6 +619,18 @@ export function DeviceDetailModal({
       onClose();
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleDelete() {
+    setIsDeleting(true);
+    setDeleteError('');
+
+    try {
+      await onDeleteDevice(device.deviceId);
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : 'Unable to delete the device right now.');
+      setIsDeleting(false);
     }
   }
 
@@ -757,6 +806,49 @@ export function DeviceDetailModal({
                       </button>
                     </div>
                   </div>
+
+                  <div className="mt-4 border-t border-slate-200 pt-4">
+                    {!isDeleteConfirming ? (
+                      <button
+                        type="button"
+                        onClick={() => setIsDeleteConfirming(true)}
+                        className="flex items-center gap-2 rounded-2xl border border-[#f0c1c1] bg-[#fff5f5] px-5 py-3 text-[11px] font-black uppercase tracking-[0.18em] text-[#cf1f1f] transition-all hover:border-[#cf1f1f]"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete Device
+                      </button>
+                    ) : (
+                      <div className="rounded-2xl border border-[#f0c1c1] bg-[#fff5f5] p-5">
+                        <p className="text-sm font-bold text-[#8b1212]">
+                          Delete <span className="font-mono">{device.deviceId}</span>? This action cannot be undone.
+                        </p>
+                        {deleteError && (
+                          <p className="mt-2 flex items-center gap-1.5 text-xs font-bold text-[#cf1f1f]">
+                            <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                            {deleteError}
+                          </p>
+                        )}
+                        <div className="mt-4 flex items-center gap-3">
+                          <button
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={handleDelete}
+                            className="rounded-xl bg-[#cf1f1f] px-4 py-2 text-[11px] font-black uppercase tracking-widest text-white transition-all hover:bg-[#a81818] disabled:opacity-70"
+                          >
+                            {isDeleting ? 'Deleting…' : 'Yes, Delete'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isDeleting}
+                            onClick={() => { setIsDeleteConfirming(false); setDeleteError(''); }}
+                            className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-[11px] font-black uppercase tracking-widest text-primary transition-all hover:border-primary disabled:opacity-70"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </section>
 
                 <section className="rounded-[1.8rem] border border-slate-200 bg-white p-6 shadow-sm">
@@ -832,7 +924,12 @@ export function DeviceDetailModal({
 
           {activeTab === 'assignment-history' && (
             <div className="space-y-6">
-              <h4 className="text-4xl font-black tracking-tight text-primary">Assignment History Log</h4>
+              <div>
+                <h4 className="text-4xl font-black tracking-tight text-primary">Current Assignment</h4>
+                <p className="mt-2 text-sm font-medium text-slate-500">
+                  Full assignment history is not available yet. This section shows the current assignment from the device record.
+                </p>
+              </div>
               <section className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-sm">
                 <div className="grid grid-cols-[1.3fr_1.4fr_0.9fr_1fr_0.8fr] gap-4 border-b border-slate-200 bg-[#eef3fb] px-8 py-5 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500">
                   <span>Asset User</span>
@@ -869,54 +966,154 @@ export function DeviceDetailModal({
           )}
 
           {activeTab === 'repair-log' && (
-            <div className="space-y-6">
-              <h4 className="text-4xl font-black tracking-tight text-primary">Maintenance & Engineering Events</h4>
-              {repairLogEntries.length === 0 ? (
-                <section className="rounded-[2rem] border border-dashed border-slate-300 bg-white px-8 py-16 text-center shadow-sm">
-                  <p className="text-lg font-black uppercase tracking-[0.18em] text-slate-500">
-                    No repair events recorded
-                  </p>
-                  <p className="mt-3 text-base font-medium italic text-slate-500">
-                    Add repair notes to this device record to surface them here.
-                  </p>
-                </section>
-              ) : (
-                repairLogEntries.map((entry) => (
-                  <section
-                    key={entry.id}
-                    className="rounded-[2rem] border border-slate-200 bg-white px-7 py-6 shadow-sm"
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-4">
-                      <div className="flex min-w-0 items-start gap-5">
-                        <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-orange-500">
-                          <Wrench className="h-7 w-7" />
-                        </div>
-                        <div className="min-w-0">
-                          <h5 className="text-2xl font-black text-primary">{entry.title}</h5>
-                          <p className="text-lg font-black uppercase tracking-[0.14em] text-slate-700">
-                            Event ID: {entry.eventId}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="rounded-xl border border-[#a4e0b3] bg-[#ebfff0] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#0a8f47]">
-                        {entry.status}
-                      </span>
-                    </div>
-                    <div className="mt-5 rounded-[1.6rem] bg-[#eef3fb] px-6 py-6 text-lg font-medium italic leading-8 text-slate-600">
-                      {entry.detail}
-                    </div>
-                    <div className="mt-5 flex flex-wrap items-center gap-8 text-[13px] font-black uppercase tracking-[0.16em] text-primary">
-                      <span>{entry.timestamp}</span>
-                      <span>Technician: {entry.technician}</span>
-                    </div>
+            <div className="space-y-8">
+              <div>
+                <h4 className="text-4xl font-black tracking-tight text-primary">Maintenance & Engineering Events</h4>
+              </div>
+
+              {/* ── Section A: Device Events ──────────────────────────────── */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-2 w-2 rounded-full bg-primary" />
+                  <h5 className="text-lg font-black uppercase tracking-[0.18em] text-primary">Device Events</h5>
+                </div>
+                <p className="text-sm font-medium text-slate-500">
+                  Confirmed records specific to this asset — device notes and repair tickets created directly for this device.
+                </p>
+                {deviceEvents.length === 0 && persistedEntries.length === 0 && liveConfirmedEntries.length === 0 ? (
+                  <section className="rounded-[2rem] border border-dashed border-slate-300 bg-white px-8 py-12 text-center shadow-sm">
+                    <p className="text-base font-black uppercase tracking-[0.18em] text-slate-500">
+                      No device events recorded
+                    </p>
+                    <p className="mt-2 text-sm font-medium italic text-slate-400">
+                      Add a note to this device record, or create a repair ticket for this device to surface entries here.
+                    </p>
                   </section>
-                ))
-              )}
+                ) : (
+                  <>
+                    {deviceEvents.map((entry) => (
+                      <RepairLogCard key={entry.id} entry={entry} />
+                    ))}
+                    {persistedEntries.map((entry) => (
+                      <RepairLogCard key={entry.id} entry={entry} />
+                    ))}
+                    {liveConfirmedEntries.map((entry) => (
+                      <RepairLogCard key={entry.id} entry={entry} />
+                    ))}
+                  </>
+                )}
+              </div>
+
+              {/* ── Section B: Possible Related Tickets ───────────────────── */}
+              <div className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <div className="h-2 w-2 rounded-full bg-amber-500" />
+                  <h5 className="text-lg font-black uppercase tracking-[0.18em] text-primary">Possible Related Tickets</h5>
+                </div>
+                <p className="text-sm font-medium text-slate-500">
+                  Tickets matched by device model name — may include tickets from other assets with the same model.
+                  Tickets created for this specific device appear in Device Events above.
+                </p>
+                {visibleInferredEntries.length === 0 && weakInferredEntries.length === 0 ? (
+                  <section className="rounded-[2rem] border border-dashed border-slate-300 bg-white px-8 py-12 text-center shadow-sm">
+                    <p className="text-base font-black uppercase tracking-[0.18em] text-slate-500">
+                      No matching tickets found
+                    </p>
+                    <p className="mt-2 text-sm font-medium italic text-slate-400">
+                      No tickets matched this device model name.
+                    </p>
+                  </section>
+                ) : (
+                  <>
+                    {visibleInferredEntries.map((entry) => (
+                      <RepairLogCard key={entry.id} entry={entry} />
+                    ))}
+                    {weakMatches.length > 0 && (
+                      <div className="pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowWeakMatches((v) => !v)}
+                          className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-[11px] font-black uppercase tracking-[0.18em] text-slate-500 shadow-sm transition-all hover:border-slate-400 hover:text-primary"
+                        >
+                          {showWeakMatches ? 'Hide' : 'Show'} weak matches ({weakMatches.length})
+                          <span className="rounded border border-slate-300 bg-slate-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider text-slate-500">
+                            model-only
+                          </span>
+                        </button>
+                        {showWeakMatches && weakInferredEntries.map((entry) => (
+                          <div key={entry.id} className="mt-4">
+                            <RepairLogCard entry={entry} />
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           )}
         </div>
       </motion.div>
     </div>
+  );
+}
+
+function confidenceBadgeProps(confidence: MatchConfidence): { label: string; className: string } {
+  if (confidence === 'high') {
+    return {
+      label: 'Strong match',
+      className: 'border-green-300 bg-green-50 text-green-700',
+    };
+  }
+  if (confidence === 'medium') {
+    return {
+      label: 'Model + department match',
+      className: 'border-amber-300 bg-amber-50 text-amber-700',
+    };
+  }
+  return {
+    label: 'Weak model-only match',
+    className: 'border-slate-300 bg-slate-100 text-slate-600',
+  };
+}
+
+function RepairLogCard({ entry }: { entry: import('./inventoryDetail').RepairLogEntry }) {
+  return (
+    <section className="rounded-[2rem] border border-slate-200 bg-white px-7 py-6 shadow-sm">
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex min-w-0 items-start gap-5">
+          <div className="rounded-2xl border border-orange-200 bg-orange-50 p-4 text-orange-500">
+            <Wrench className="h-7 w-7" />
+          </div>
+          <div className="min-w-0">
+            <h5 className="text-2xl font-black text-primary">{entry.title}</h5>
+            <p className="text-lg font-black uppercase tracking-[0.14em] text-slate-700">
+              Event ID: {entry.eventId}
+            </p>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {entry.matchConfidence && (() => {
+            const { label, className } = confidenceBadgeProps(entry.matchConfidence);
+            return (
+              <span className={`rounded-xl border px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] ${className}`}>
+                {label}
+              </span>
+            );
+          })()}
+          <span className="rounded-xl border border-[#a4e0b3] bg-[#ebfff0] px-4 py-2 text-[11px] font-black uppercase tracking-[0.18em] text-[#0a8f47]">
+            {entry.status}
+          </span>
+        </div>
+      </div>
+      <div className="mt-5 rounded-[1.6rem] bg-[#eef3fb] px-6 py-6 text-lg font-medium italic leading-8 text-slate-600">
+        {entry.detail}
+      </div>
+      <div className="mt-5 flex flex-wrap items-center gap-8 text-[13px] font-black uppercase tracking-[0.16em] text-primary">
+        <span>{entry.timestamp}</span>
+        <span>Technician: {entry.technician}</span>
+      </div>
+    </section>
   );
 }
 
