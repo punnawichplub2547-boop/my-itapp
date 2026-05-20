@@ -1,21 +1,21 @@
-# Deployment Guide
+# คู่มือการ Deploy
 
-This project can be deployed without Docker. For the current handover, that is the recommended path because it is simpler to validate on an internal server.
+โปรเจกต์นี้สามารถ deploy ได้โดยไม่ต้องใช้ Docker สำหรับการส่งต่องานครั้งนี้ แนะนำให้ใช้วิธีนี้ เพราะตรวจสอบและดูแลบนเซิร์ฟเวอร์ภายในได้ง่ายกว่า
 
-## Recommended Deployment Mode
+## รูปแบบการ Deploy ที่แนะนำ
 
-- Node.js + MySQL on the server
-- No Docker required
+- ใช้ Node.js + MySQL บนเซิร์ฟเวอร์
+- ไม่จำเป็นต้องใช้ Docker
 
-## Prerequisites
+## สิ่งที่ต้องเตรียมก่อน
 
-Install or confirm the following on the target server:
+ติดตั้งหรือตรวจสอบให้แน่ใจว่าเซิร์ฟเวอร์ปลายทางมีสิ่งต่อไปนี้:
 
 - Node.js
 - npm
 - MySQL
 
-Check versions:
+ตรวจสอบเวอร์ชัน:
 
 ```bash
 node -v
@@ -23,37 +23,37 @@ npm -v
 mysql --version
 ```
 
-## Step 1: Get the Source Code
+## ขั้นตอนที่ 1: ดึง Source Code
 
-Clone the repository:
+Clone repository:
 
 ```bash
 git clone https://github.com/punnawichplub2547-boop/my-itapp.git
 cd my-itapp
 ```
 
-## Step 2: Create the MySQL Database
+## ขั้นตอนที่ 2: สร้างฐานข้อมูล MySQL
 
-Open MySQL and create a fresh database:
+เปิด MySQL แล้วสร้างฐานข้อมูลใหม่:
 
 ```sql
 CREATE DATABASE repairlink;
 USE repairlink;
 ```
 
-Then create the required tables using:
+จากนั้นสร้างตารางที่จำเป็นตามไฟล์ต่อไปนี้:
 
 - `docs/device-database.md`
 - `docs/repair-ticket-database.md`
 - `docs/migrations/create_device_repair_events.sql`
 
-If you want ticket numbers to start fresh, use a new empty database and do not import old `repair_tickets` data.
+ถ้าต้องการให้เลข ticket เริ่มใหม่ ให้ใช้ฐานข้อมูลว่างชุดใหม่ และไม่ต้อง import ข้อมูลเก่าจากตาราง `repair_tickets`
 
-## Step 3: Prepare Environment Variables
+## ขั้นตอนที่ 3: เตรียม Environment Variables
 
-Create a `.env.production` file based on `.env.production.example`.
+สร้างไฟล์ `.env.production` โดยอ้างอิงจากไฟล์ `.env.production.example`
 
-Minimum required values:
+ค่าขั้นต่ำที่ต้องกำหนด:
 
 ```env
 DEVICE_REPOSITORY=mysql
@@ -71,45 +71,45 @@ SMTP_PASS=
 MAIL_FROM=RepairLink <noreply@example.com>
 ```
 
-## Step 4: Install Dependencies
+## ขั้นตอนที่ 4: ติดตั้ง Dependencies
 
 ```bash
 npm install
 ```
 
-## Step 5: Build the App
+## ขั้นตอนที่ 5: Build แอป
 
 ```bash
 npm run build
 ```
 
-## Step 6: Start the App
+## ขั้นตอนที่ 6: เริ่มรันแอป
 
 ```bash
 npm run start
 ```
 
-By default, the app runs on port `3000`.
+โดยค่าเริ่มต้น แอปจะรันที่ port `3000`
 
-Open:
+เปิดใช้งานผ่าน:
 
 - `http://<server-ip>:3000`
 
-## Step 7: Validation Checklist
+## ขั้นตอนที่ 7: Checklist สำหรับตรวจสอบ
 
-After starting the app, verify:
+หลังจากเริ่มรันแอปแล้ว ให้ตรวจสอบว่า:
 
-1. Login works
-2. Dashboard opens
-3. Device Inventory loads from MySQL
-4. Create Repair Request works
-5. Repair Status opens and ticket status updates work
-6. Reports opens
-7. Warranty Audit opens
+1. Login ใช้งานได้
+2. เปิดหน้า Dashboard ได้
+3. หน้า Device Inventory โหลดข้อมูลจาก MySQL ได้
+4. สร้าง Repair Request ได้
+5. เปิดหน้า Repair Status ได้ และอัปเดตสถานะ ticket ได้
+6. เปิดหน้า Reports ได้
+7. เปิดหน้า Warranty Audit ได้
 
-## Optional: Run as a Long-Lived Process
+## ทางเลือกเพิ่มเติม: รันเป็น Process ระยะยาว
 
-Recommended option:
+ตัวเลือกที่แนะนำ:
 
 ```bash
 npm install -g pm2
@@ -117,7 +117,7 @@ pm2 start npm --name repairlink -- run start
 pm2 save
 ```
 
-Useful commands:
+คำสั่งที่ใช้บ่อย:
 
 ```bash
 pm2 list
@@ -125,11 +125,11 @@ pm2 logs repairlink
 pm2 restart repairlink
 ```
 
-## Optional: Docker
+## ทางเลือกเพิ่มเติม: Docker
 
-Docker support files already exist:
+มีไฟล์สำหรับรองรับ Docker อยู่แล้ว:
 
 - `Dockerfile`
 - `.dockerignore`
 
-Docker is optional and not required for current handover.
+Docker เป็นทางเลือกเพิ่มเติม และไม่จำเป็นสำหรับการส่งต่องานครั้งนี้
