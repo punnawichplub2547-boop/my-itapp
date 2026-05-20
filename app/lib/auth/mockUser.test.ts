@@ -5,6 +5,7 @@ import {
   createSessionToken,
   isValidSessionToken,
   SESSION_COOKIE_NAME,
+  shouldUseSecureSessionCookie,
 } from './mockUser';
 
 test('creates a session token that is tied to the username and validates successfully', () => {
@@ -30,4 +31,19 @@ test('rejects an expired session token', () => {
 
 test('exports the stable session cookie name', () => {
   assert.equal(SESSION_COOKIE_NAME, 'repairlink_session');
+});
+
+test('allows secure session cookies to be disabled for HTTP deployments', () => {
+  const originalValue = process.env.AUTH_COOKIE_SECURE;
+  process.env.AUTH_COOKIE_SECURE = 'false';
+
+  try {
+    assert.equal(shouldUseSecureSessionCookie(), false);
+  } finally {
+    if (originalValue === undefined) {
+      delete process.env.AUTH_COOKIE_SECURE;
+    } else {
+      process.env.AUTH_COOKIE_SECURE = originalValue;
+    }
+  }
 });

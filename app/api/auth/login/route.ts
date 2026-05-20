@@ -5,6 +5,7 @@ import {
   STANDARD_SESSION_MAX_AGE,
   authenticateAdmin,
   createSessionToken,
+  shouldUseSecureSessionCookie,
 } from '../../../lib/auth/mockUser';
 
 export const runtime = 'nodejs';
@@ -48,7 +49,7 @@ export async function POST(request: Request) {
     value: createSessionToken(user.username),
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: shouldUseSecureSessionCookie(),
     path: '/',
     maxAge: rememberMe ? REMEMBERED_SESSION_MAX_AGE : STANDARD_SESSION_MAX_AGE,
   });

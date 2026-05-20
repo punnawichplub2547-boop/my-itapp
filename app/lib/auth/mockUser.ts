@@ -34,6 +34,18 @@ function getSessionSecret() {
   return process.env.AUTH_SESSION_SECRET ?? DEV_SESSION_SECRET;
 }
 
+export function shouldUseSecureSessionCookie() {
+  if (process.env.AUTH_COOKIE_SECURE === 'true') {
+    return true;
+  }
+
+  if (process.env.AUTH_COOKIE_SECURE === 'false') {
+    return false;
+  }
+
+  return process.env.NODE_ENV === 'production';
+}
+
 export function authenticateAdmin(username: string, password: string) {
   const mockAdminUser = getMockAdminUser();
 

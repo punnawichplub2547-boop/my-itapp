@@ -62,6 +62,7 @@ DATABASE_URL=mysql://root:yourpassword@127.0.0.1:3306/repairlink
 AUTH_ADMIN_USERNAME=admin
 AUTH_ADMIN_PASSWORD=change-me
 AUTH_SESSION_SECRET=change-me-to-a-long-random-secret
+AUTH_COOKIE_SECURE=false
 
 SMTP_HOST=
 SMTP_PORT=587
