@@ -93,11 +93,11 @@ docker compose up -d --build
 
 The Compose service uses `restart: unless-stopped`, so Docker will keep the web app running after crashes and start it again after a machine reboot unless the container is manually stopped.
 
-If port `3000` is already in use on the server, set `APP_PORT` when starting Compose:
+By default, Docker Compose publishes the app on server port `18080`:
 
-```bash
-APP_PORT=3002 docker compose up -d --build
-```
+Open `http://<server-ip>:18080`.
+
+To use a different server port, set `APP_PORT` when starting Compose.
 
 ## Scripts
 
