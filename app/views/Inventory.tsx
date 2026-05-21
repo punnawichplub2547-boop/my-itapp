@@ -307,7 +307,7 @@ export default function Inventory({
                 setSearchQuery(event.target.value);
                 setCurrentPage(1);
               }}
-              placeholder="Search Device ID, asset no, IP, model, user logon..."
+              placeholder="Search device name, asset no, IP, model, user logon..."
               className="w-full rounded-xl border border-outline-variant bg-surface-container-low py-3 pl-12 pr-4 text-sm font-medium outline-none transition-all focus:border-primary"
             />
           </label>
@@ -354,7 +354,7 @@ export default function Inventory({
           <table className="min-w-[1050px] w-full table-fixed border-collapse text-left">
             <thead className="sticky top-0 z-10 border-b border-outline-variant bg-surface-container-low text-[10px] font-black uppercase tracking-[0.2em] text-primary shadow-sm">
               <tr>
-                <th className="w-36 px-6 py-5">Device ID</th>
+                <th className="w-36 px-6 py-5">Device Name</th>
                 <th className="w-40 px-6 py-5">Department</th>
                 <th className="w-44 px-6 py-5">User Log On</th>
                 <th className="w-40 px-6 py-5">Device Type</th>
@@ -1191,7 +1191,7 @@ function AssignmentModal({
             </div>
             <h3 className="text-2xl font-black tracking-tight text-primary">Assign Device User</h3>
             <div className="mt-2 inline-block rounded-lg border border-outline-variant/30 bg-surface-container-low px-3 py-1.5 text-xs font-mono font-bold uppercase tracking-widest text-outline">
-              Device: {device.deviceId}
+              Device Name: {device.deviceId}
             </div>
           </div>
 

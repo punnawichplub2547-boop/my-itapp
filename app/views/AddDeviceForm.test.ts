@@ -43,7 +43,7 @@ test('renders install and expire date fields as native date pickers', () => {
   assert.match(markup, /Expire Date/);
 });
 
-test('requires a deviceId in add-device payloads', () => {
+test('requires a device name in add-device payloads', () => {
   assert.equal(
     validateDeviceForm({
       deviceId: '',
@@ -68,7 +68,7 @@ test('requires a deviceId in add-device payloads', () => {
       notes: '',
       assetNo: '',
     } as never),
-    'Device ID is required.'
+    'Device Name is required.'
   );
 });
 

@@ -73,7 +73,7 @@ function createInitialValues(): AddDeviceFormValues {
 
 export function validateDeviceForm(values: AddDeviceFormValues) {
   if (!values.deviceId.trim()) {
-    return 'Device ID is required.';
+    return 'Device Name is required.';
   }
 
   if (!values.department.trim()) {
@@ -209,11 +209,11 @@ export default function AddDeviceForm({
                 <h3 className="font-bold text-primary">Core Identity</h3>
               </div>
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <Field label="Device ID">
+                <Field label="Device Name">
                   <input
                     value={values.deviceId}
                     onChange={(event) => handleTextInput('deviceId', event)}
-                    placeholder="e.g. CAR200"
+                    placeholder="e.g. CAR200 or device hostname"
                     className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm font-mono outline-none transition-all focus:border-primary"
                   />
                 </Field>

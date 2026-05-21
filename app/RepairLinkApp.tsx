@@ -274,7 +274,7 @@ export default function App({
                     <div className="px-4 py-6 text-center">
                       <p className="text-sm font-bold text-primary">No results found</p>
                       <p className="mt-1 text-xs text-secondary">
-                        Try a device ID, ticket number, model, employee, or warranty status.
+                        Try a device name, ticket number, model, employee, or warranty status.
                       </p>
                     </div>
                   )}

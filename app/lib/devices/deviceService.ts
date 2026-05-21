@@ -89,7 +89,7 @@ export class DeviceValidationError extends Error {
 
 export class DuplicateDeviceIdError extends Error {
   constructor() {
-    super('A device with this device ID already exists.');
+    super('A device with this device name already exists.');
     this.name = 'DuplicateDeviceIdError';
   }
 }
@@ -113,7 +113,7 @@ export function normalizeCreateDeviceInput(input: unknown): CreateDeviceInput {
     throw new DeviceValidationError('Device payload must be an object.');
   }
 
-  const deviceId = normalizeRequiredText(input.deviceId, 'Device ID is required.');
+  const deviceId = normalizeRequiredText(input.deviceId, 'Device Name is required.');
   const department = normalizeRequiredText(input.department, 'Department is required.');
   const os = normalizeRequiredText(input.os, 'Operating system is required.');
   const ipMode = normalizeIpMode(input.ipMode);
@@ -790,7 +790,7 @@ function normalizeOptionalText(value: unknown) {
 }
 
 function normalizeDeviceId(deviceId: string) {
-  return normalizeRequiredText(deviceId, 'Device ID is required.');
+  return normalizeRequiredText(deviceId, 'Device Name is required.');
 }
 
 function normalizeDeviceIdForMap(deviceId: string) {

@@ -85,7 +85,7 @@ test('rejects malformed workbook-backed device input', () => {
         ipMode: 'Static',
         os: '',
       }),
-    /Device ID is required/
+    /Device Name is required/
   );
 });
 

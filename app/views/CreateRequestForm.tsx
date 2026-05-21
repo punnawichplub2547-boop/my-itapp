@@ -23,27 +23,43 @@ export function listRequestDepartments(devices: Device[]) {
   return uniqueSortedValues(devices.map((device) => device.department));
 }
 
-export function listRequestDeviceModels(devices: Device[], department: string) {
-  if (!department.trim()) {
-    return [];
-  }
-
+export function listRequestDeviceNames(devices: Device[], department: string) {
   return uniqueSortedValues(
     devices
-      .filter((device) => device.department === department)
-      .map((device) => device.model)
+      .filter((device) => !department.trim() || device.department === department)
+      .map((device) => device.deviceId)
   );
 }
 
-export function listRequestAssignees(devices: Device[], department: string, model: string) {
-  if (!department.trim() || !model.trim()) {
+export function listRequestAssignees(devices: Device[], department: string, deviceName: string) {
+  if (!department.trim() || !deviceName.trim()) {
     return [];
   }
 
   return uniqueSortedValues(
     devices
-      .filter((device) => device.department === department && device.model === model)
+      .filter((device) => device.department === department && device.deviceId === deviceName)
       .map((device) => device.assignedTo)
+  );
+}
+
+export function getRequestDeviceModel(devices: Device[], department: string, deviceName: string) {
+  return findRequestDeviceByName(devices, department, deviceName)?.model ?? '';
+}
+
+function findRequestDeviceByName(devices: Device[], department: string, deviceName: string) {
+  const normalizedDeviceName = deviceName.trim();
+
+  if (!normalizedDeviceName) {
+    return null;
+  }
+
+  return (
+    devices.find(
+      (device) =>
+        device.deviceId === normalizedDeviceName &&
+        (!department.trim() || device.department === department)
+    ) ?? null
   );
 }
 
@@ -59,7 +75,7 @@ export default function CreateRequestForm({
   onTicketCreated?: (ticket: RepairTicket) => void;
 }) {
   const [department, setDepartment] = useState('');
-  const [deviceModel, setDeviceModel] = useState('');
+  const [deviceName, setDeviceName] = useState('');
   const [selectedInventoryDeviceId, setSelectedInventoryDeviceId] = useState<string | null>(null);
   const [assignedTo, setAssignedTo] = useState('');
   const [employeeEmail, setEmployeeEmail] = useState('');
@@ -75,33 +91,42 @@ export default function CreateRequestForm({
 
   const departmentSuggestions = useMemo(() => listRequestDepartments(devices), [devices]);
 
-  const deviceModelSuggestions = useMemo(() => {
-    if (!department.trim()) return uniqueSortedValues(devices.map(d => d.model));
-    return listRequestDeviceModels(devices, department);
-  }, [devices, department]);
+  const deviceNameSuggestions = useMemo(
+    () => listRequestDeviceNames(devices, department),
+    [devices, department]
+  );
+
+  const selectedInventoryDevice = useMemo(
+    () => findRequestDeviceByName(devices, department, deviceName),
+    [devices, department, deviceName]
+  );
 
   const assigneeSuggestions = useMemo(
-    () => listRequestAssignees(devices, department, deviceModel),
-    [devices, department, deviceModel]
+    () => listRequestAssignees(devices, department, deviceName),
+    [devices, department, deviceName]
   );
 
   function handleDepartmentChange(value: string) {
     setDepartment(value);
-    setDeviceModel('');
+    setDeviceName('');
     setAssignedTo('');
     setSelectedInventoryDeviceId(null);
   }
 
-  function handleDeviceModelChange(value: string) {
-    setDeviceModel(value);
-    const matched = devices.filter(
-      d => d.model === value && (!department.trim() || d.department === department)
-    );
-    if (matched.length === 1) {
+  function handleDeviceNameChange(value: string) {
+    setDeviceName(value);
+    const matchedDevice = findRequestDeviceByName(devices, department, value);
+
+    if (matchedDevice) {
       // Unique inventory device identified — capture its ID for confirmed ticket linking
-      setSelectedInventoryDeviceId(matched[0].deviceId);
-      if (!assignedTo && matched[0].assignedTo) {
-        setAssignedTo(matched[0].assignedTo);
+      setSelectedInventoryDeviceId(matchedDevice.deviceId);
+
+      if (!department.trim() && matchedDevice.department) {
+        setDepartment(matchedDevice.department);
+      }
+
+      if (!assignedTo && matchedDevice.assignedTo) {
+        setAssignedTo(matchedDevice.assignedTo);
       }
     } else {
       setSelectedInventoryDeviceId(null);
@@ -113,7 +138,7 @@ export default function CreateRequestForm({
 
     const payload = {
       deviceId: selectedInventoryDeviceId ?? undefined,
-      deviceName: deviceModel.trim(),
+      deviceName: deviceName.trim(),
       employeeName: assignedTo.trim(),
       employeeEmail: employeeEmail.trim(),
       department: department.trim(),
@@ -229,18 +254,27 @@ export default function CreateRequestForm({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Device Model</label>
+                  <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Device Name</label>
                   <input
                     type="text"
-                    list="device-model-options"
-                    value={deviceModel}
-                    onChange={(e) => handleDeviceModelChange(e.target.value)}
-                    placeholder="Select or type a device model"
+                    list="device-name-options"
+                    value={deviceName}
+                    onChange={(e) => handleDeviceNameChange(e.target.value)}
+                    placeholder="Select or type a device name"
                     className={comboInputClass}
                   />
-                  <datalist id="device-model-options">
-                    {deviceModelSuggestions.map(m => <option key={m} value={m} />)}
+                  <datalist id="device-name-options">
+                    {deviceNameSuggestions.map(m => <option key={m} value={m} />)}
                   </datalist>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Device Model</label>
+                  <input
+                    value={selectedInventoryDevice?.model ?? ''}
+                    readOnly
+                    placeholder="Select a device name to show its model"
+                    className={`${comboInputClass} cursor-default text-secondary`}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[10px] font-bold text-secondary uppercase tracking-widest pl-1">Problem Type</label>

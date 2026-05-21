@@ -93,7 +93,7 @@ export default function WarrantyAuditView({
               <input
                 value={searchQuery}
                 onChange={(event) => setSearchQuery(event.target.value)}
-                placeholder="Search by device ID or model"
+                placeholder="Search by device name or model"
                 className="w-full rounded-2xl border border-outline-variant bg-white py-3 pl-11 pr-4 text-sm outline-none transition-colors focus:border-primary"
               />
             </label>

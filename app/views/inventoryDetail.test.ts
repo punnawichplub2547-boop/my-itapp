@@ -49,7 +49,7 @@ test('exposes the device detail tabs from the reference layout', () => {
   );
 });
 
-test('uses deviceId as hero title and includes IP address in subtitle', () => {
+test('uses device name as hero title and includes IP address in subtitle', () => {
   assert.equal(getDeviceDetailHeroTitle(INVENTORY_DEVICE), 'CAR163');
   assert.equal(
     getDeviceDetailHeroSubtitle(INVENTORY_DEVICE),

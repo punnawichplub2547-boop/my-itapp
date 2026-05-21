@@ -103,7 +103,7 @@ test('does not render Asset No or Status table columns in inventory', () => {
 
   assert.doesNotMatch(markup, />Asset No</);
   assert.doesNotMatch(markup, />Status</);
-  assert.match(markup, />Device ID</);
+  assert.match(markup, />Device Name</);
 });
 
 test('uses a fixed inventory page size of 10 devices', () => {

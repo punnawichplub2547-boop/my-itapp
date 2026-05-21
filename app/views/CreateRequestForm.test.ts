@@ -4,9 +4,10 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import CreateRequestForm, {
   REPAIR_PRIORITY_OPTIONS,
+  getRequestDeviceModel,
   listRequestAssignees,
+  listRequestDeviceNames,
   listRequestDepartments,
-  listRequestDeviceModels,
 } from './CreateRequestForm';
 import type { Device } from '../types';
 
@@ -109,16 +110,22 @@ test('derives unique repair-request departments from inventory devices', () => {
   assert.deepEqual(listRequestDepartments(REQUEST_DEVICES), ['Finance', 'IT']);
 });
 
-test('filters repair-request device models by department', () => {
-  assert.deepEqual(listRequestDeviceModels(REQUEST_DEVICES, 'IT'), ['OptiPlex 360', 'ThinkBook 15']);
-  assert.deepEqual(listRequestDeviceModels(REQUEST_DEVICES, 'Finance'), ['PowerEdge R740']);
-  assert.deepEqual(listRequestDeviceModels(REQUEST_DEVICES, ''), []);
+test('filters repair-request device names by department', () => {
+  assert.deepEqual(listRequestDeviceNames(REQUEST_DEVICES, 'IT'), ['CAR001', 'CAR002', 'CAR004']);
+  assert.deepEqual(listRequestDeviceNames(REQUEST_DEVICES, 'Finance'), ['CAR003']);
+  assert.deepEqual(listRequestDeviceNames(REQUEST_DEVICES, ''), ['CAR001', 'CAR002', 'CAR003', 'CAR004']);
 });
 
-test('filters unique assignees by department and device model', () => {
-  assert.deepEqual(listRequestAssignees(REQUEST_DEVICES, 'IT', 'OptiPlex 360'), ['chakrit']);
-  assert.deepEqual(listRequestAssignees(REQUEST_DEVICES, 'IT', 'ThinkBook 15'), ['suda']);
-  assert.deepEqual(listRequestAssignees(REQUEST_DEVICES, 'Finance', 'PowerEdge R740'), ['mali']);
+test('filters unique assignees by department and device name', () => {
+  assert.deepEqual(listRequestAssignees(REQUEST_DEVICES, 'IT', 'CAR001'), ['chakrit']);
+  assert.deepEqual(listRequestAssignees(REQUEST_DEVICES, 'IT', 'CAR002'), ['suda']);
+  assert.deepEqual(listRequestAssignees(REQUEST_DEVICES, 'Finance', 'CAR003'), ['mali']);
+});
+
+test('derives the selected device model from device name', () => {
+  assert.equal(getRequestDeviceModel(REQUEST_DEVICES, 'IT', 'CAR001'), 'OptiPlex 360');
+  assert.equal(getRequestDeviceModel(REQUEST_DEVICES, 'Finance', 'CAR003'), 'PowerEdge R740');
+  assert.equal(getRequestDeviceModel(REQUEST_DEVICES, 'IT', 'CUSTOM-DEVICE'), '');
 });
 
 test('renders inventory-backed department choices and repair priority options', () => {
@@ -127,8 +134,11 @@ test('renders inventory-backed department choices and repair priority options', 
   );
 
   assert.match(markup, />Department</);
+  assert.match(markup, />Device Name</);
+  assert.match(markup, />Device Model</);
   assert.match(markup, /<option value="IT"><\/option>/);
   assert.match(markup, /<option value="Finance"><\/option>/);
+  assert.match(markup, /<option value="CAR001"><\/option>/);
   assert.match(markup, />Priority</);
   assert.match(markup, /<option>Low<\/option>/);
   assert.match(markup, /<option(?: selected="")?>Medium<\/option>/);
