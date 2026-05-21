@@ -22,10 +22,15 @@ export interface AppSearchGroups {
   warranties: AppSearchResult[];
 }
 
+export interface AppSearchOptions {
+  now?: Date;
+}
+
 export function buildAppSearchGroups(
   query: string,
   devices: Device[],
-  tickets: RepairTicket[]
+  tickets: RepairTicket[],
+  options: AppSearchOptions = {}
 ): AppSearchGroups {
   const normalizedQuery = normalizeSearchText(query);
 
@@ -40,7 +45,7 @@ export function buildAppSearchGroups(
   return {
     devices: buildDeviceResults(normalizedQuery, devices),
     tickets: buildTicketResults(normalizedQuery, tickets),
-    warranties: buildWarrantyResults(normalizedQuery, devices),
+    warranties: buildWarrantyResults(normalizedQuery, devices, options.now),
   };
 }
 
@@ -118,9 +123,9 @@ function buildTicketResults(query: string, tickets: RepairTicket[]): AppSearchRe
     .slice(0, MAX_RESULTS_PER_GROUP);
 }
 
-function buildWarrantyResults(query: string, devices: Device[]): AppSearchResult[] {
+function buildWarrantyResults(query: string, devices: Device[], now?: Date): AppSearchResult[] {
   const results = devices.map((device): AppSearchResult | null => {
-      const status = getWarrantyAlertStatus(device);
+      const status = getWarrantyAlertStatus(device, now);
       const statusLabel =
         status.kind === 'expired'
           ? 'Expired'

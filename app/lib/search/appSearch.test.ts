@@ -83,7 +83,9 @@ test('finds ticket results by description text', () => {
 });
 
 test('finds warranty results by status text', () => {
-  const groups = buildAppSearchGroups('expired', DEVICES, TICKETS);
+  const groups = buildAppSearchGroups('expired', DEVICES, TICKETS, {
+    now: new Date('2026-05-10T00:00:00.000Z'),
+  });
 
   assert.equal(groups.warranties[0]?.deviceId, 'SRV-010');
 });
