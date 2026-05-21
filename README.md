@@ -53,6 +53,7 @@ Use these example files as references:
 
 - `.env.example` for local development
 - `.env.production.example` for server deployment
+- `.env.docker.local.example` for Docker Compose deployment
 
 Do not commit or hand over real local secret files such as:
 
@@ -81,6 +82,22 @@ Deployment steps are documented in:
 
 - `DEPLOY.md`
 - `HANDOVER.md`
+
+### Docker Compose
+
+Create `.env.docker.local` from `.env.docker.local.example`, then run:
+
+```bash
+docker compose up -d --build
+```
+
+The Compose service uses `restart: unless-stopped`, so Docker will keep the web app running after crashes and start it again after a machine reboot unless the container is manually stopped.
+
+If port `3000` is already in use on the server, set `APP_PORT` when starting Compose:
+
+```bash
+APP_PORT=3002 docker compose up -d --build
+```
 
 ## Scripts
 
