@@ -1,6 +1,11 @@
 import ExcelJS from 'exceljs';
 import type { RepairTicket } from '../../types';
-import { applyCellStyle, loadTemplateStyles } from './excelTemplate';
+import {
+  addSignatureBlock,
+  applyCellStyle,
+  applyLandscapeA4PrintSetup,
+  loadTemplateStyles,
+} from './excelTemplate';
 
 const REPORT_SUBTITLE = 'รายงานการซ่อมแซมอุปกรณ์ระบบสารสนเทศ (IT Equipment Repair Report)';
 
@@ -9,22 +14,21 @@ const HEADER_LABELS: readonly string[] = [
   'Ticket ID',
   'Device',
   'Department',
-  'Employee',
+  'Description',
+  'Solution',
   'Email',
   'Problem Type',
-  'Priority',
-  'Status',
   'Created',
   'Completed',
-  'Description',
-  'Notes',
+  'Status',
 ];
 
 const COLUMN_WIDTHS: readonly number[] = [
-  6, 14, 22, 14, 22, 28, 22, 12, 14, 14, 14, 40, 30,
+  5, 12, 17, 11, 34, 34, 24, 18, 12, 12, 13,
 ];
 
-const LEFT_ALIGNED_COL_INDEXES = new Set([11, 12]);
+const LEFT_ALIGNED_COL_INDEXES = new Set([4, 5]);
+const WRAPPED_TEXT_COL_INDEXES = new Set([4, 5]);
 
 function formatDate(iso: string | undefined): string {
   if (!iso) return '';
@@ -33,10 +37,10 @@ function formatDate(iso: string | undefined): string {
   return d.toLocaleDateString('en-GB');
 }
 
-function formatNotes(ticket: RepairTicket): string {
+function formatSolution(ticket: RepairTicket): string {
   if (!ticket.notes || ticket.notes.length === 0) return '';
   return ticket.notes
-    .map((n) => `${n.author}: ${n.content}`)
+    .map((note) => note.content)
     .join('\n');
 }
 
@@ -46,15 +50,13 @@ export function ticketToReportRow(ticket: RepairTicket, index: number): (string 
     ticket.id,
     ticket.deviceName,
     ticket.department,
-    ticket.employeeName,
+    ticket.description,
+    formatSolution(ticket),
     ticket.employeeEmail,
     ticket.problemType,
-    ticket.priority,
-    ticket.status,
     formatDate(ticket.createdAt),
     formatDate(ticket.completedAt),
-    ticket.description,
-    formatNotes(ticket),
+    ticket.status,
   ];
 }
 
@@ -88,20 +90,12 @@ export async function buildRepairReportXlsx(tickets: RepairTicket[]): Promise<Bu
   ws.mergeCells(2, 1, 2, headerSpan);
   ws.getRow(2).height = 30;
   applyCellStyle(ws.getRow(2).getCell(1), {
-    font: styles.titleFont,
-    alignment: styles.titleAlign,
-  });
-  ws.getRow(2).getCell(1).value = styles.companyText;
-
-  ws.mergeCells(3, 1, 3, headerSpan);
-  ws.getRow(3).height = 30;
-  applyCellStyle(ws.getRow(3).getCell(1), {
     font: styles.subtitleFont,
     alignment: styles.subtitleAlign,
   });
-  ws.getRow(3).getCell(1).value = REPORT_SUBTITLE;
+  ws.getRow(2).getCell(1).value = REPORT_SUBTITLE;
 
-  const headerRow = ws.getRow(4);
+  const headerRow = ws.getRow(3);
   headerRow.height = 28;
   HEADER_LABELS.forEach((label, idx) => {
     const cell = headerRow.getCell(idx + 1);
@@ -115,16 +109,17 @@ export async function buildRepairReportXlsx(tickets: RepairTicket[]): Promise<Bu
   });
 
   tickets.forEach((ticket, i) => {
-    const rowNum = 5 + i;
+    const rowNum = 4 + i;
     const row = ws.getRow(rowNum);
-    row.height = 24;
     const values = ticketToReportRow(ticket, i);
+    row.height = getReportRowHeight(values);
     values.forEach((value, idx) => {
       const cell = row.getCell(idx + 1);
       cell.value = value;
       const alignment: Partial<ExcelJS.Alignment> = {
         ...styles.dataAlign,
         horizontal: LEFT_ALIGNED_COL_INDEXES.has(idx) ? 'left' : 'center',
+        wrapText: true,
       };
       applyCellStyle(cell, {
         font: styles.dataFont,
@@ -134,8 +129,35 @@ export async function buildRepairReportXlsx(tickets: RepairTicket[]): Promise<Bu
     });
   });
 
-  ws.views = [{ state: 'frozen', ySplit: 4 }];
+  addSignatureBlock(ws, 5 + tickets.length, headerSpan, styles, { columnCount: 4 });
+  applyLandscapeA4PrintSetup(ws);
+
+  ws.views = [{ state: 'frozen', ySplit: 3 }];
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);
+}
+
+function getReportRowHeight(values: (string | number)[]) {
+  const maxLineCount = Math.max(
+    ...values.map((value, index) =>
+      WRAPPED_TEXT_COL_INDEXES.has(index)
+        ? getEstimatedWrappedLineCount(value, COLUMN_WIDTHS[index])
+        : String(value ?? '').split('\n').length
+    )
+  );
+
+  return Math.max(24, maxLineCount * 18 + 6);
+}
+
+function getEstimatedWrappedLineCount(value: string | number, columnWidth: number) {
+  const charsPerLine = Math.max(1, Math.floor(columnWidth * 0.8));
+
+  return String(value ?? '')
+    .split('\n')
+    .reduce(
+      (lineCount, line) =>
+        lineCount + Math.max(1, Math.ceil(line.length / charsPerLine)),
+      0
+    );
 }

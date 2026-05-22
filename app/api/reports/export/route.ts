@@ -1,12 +1,14 @@
 import { requireAuthenticatedRequest } from '../../../lib/auth/mockUser';
-import { listCompletedTickets } from '../../../lib/tickets/ticketService';
+import { listTickets } from '../../../lib/tickets/ticketService';
 import { buildRepairReportXlsx } from '../../../lib/reports/excelExport';
+import {
+  buildMonthlyReportSelection,
+  getDefaultReportMonth,
+  normalizeReportMonth,
+  sortTicketsByCreatedAt,
+} from '../../../lib/reports/monthlyTickets';
 
 export const runtime = 'nodejs';
-
-function todayStamp(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export async function GET(request: Request) {
   const unauthorizedResponse = requireAuthenticatedRequest(request);
@@ -17,16 +19,21 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const sortOrder = url.searchParams.get('sort') === 'oldest' ? 'oldest' : 'newest';
+    const requestedMonth = url.searchParams.get('month');
+    const month = normalizeReportMonth(requestedMonth) ?? getDefaultReportMonth();
 
-    const tickets = await listCompletedTickets(30);
-    tickets.sort((a, b) => {
-      const ta = a.completedAt ? new Date(a.completedAt).getTime() : 0;
-      const tb = b.completedAt ? new Date(b.completedAt).getTime() : 0;
-      return sortOrder === 'newest' ? tb - ta : ta - tb;
-    });
+    if (requestedMonth && !normalizeReportMonth(requestedMonth)) {
+      return Response.json({ error: 'month must use YYYY-MM format.' }, { status: 400 });
+    }
+
+    const includedTicketIds = url.searchParams.getAll('includeTicketId');
+    const tickets = sortTicketsByCreatedAt(
+      buildMonthlyReportSelection(await listTickets(), month, includedTicketIds),
+      sortOrder
+    );
 
     const buffer = await buildRepairReportXlsx(tickets);
-    const filename = `repair-report-${todayStamp()}.xlsx`;
+    const filename = `repair-report-${month}.xlsx`;
 
     return new Response(new Uint8Array(buffer), {
       status: 200,

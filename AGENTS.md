@@ -22,7 +22,7 @@ The app manages:
 - Add New Device.
 - Create Repair Request.
 - Repair Status management.
-- Completed/closed ticket reports.
+- Monthly ticket reports by ticket creation date.
 - Read-only Warranty Audit.
 - Device detail repair logs, including persisted repair events.
 
@@ -188,8 +188,8 @@ Tickets:
 - `POST /api/tickets/[ticketId]/notify` sends an employee notification for a ticket.
 
 Reports:
-- `GET /api/reports` lists completed/closed tickets from the last 30 days.
-- `GET /api/reports/export` exports completed/closed ticket reports to Excel.
+- `GET /api/reports?month=YYYY-MM` lists tickets created in the selected report month across every status.
+- `GET /api/reports/export?month=YYYY-MM` exports the selected report month to Excel and may include explicit cross-month ticket IDs with repeated `includeTicketId` query params.
 - `POST /api/reports/cleanup` deletes completed tickets older than 60 days.
 
 When adding API work, keep the same response style: JSON for normal API responses, explicit status codes for validation/auth/conflict errors, and `Response`/`NextResponse` only as appropriate for the route.

@@ -98,3 +98,146 @@ export function applyCellStyle(cell: ExcelJS.Cell, style: CellStylePack): void {
   if (style.alignment) cell.alignment = style.alignment as ExcelJS.Alignment;
   if (style.border) cell.border = style.border as ExcelJS.Borders;
 }
+
+const SIGNATURE_BORDER = {
+  style: 'thin' as const,
+  color: { argb: 'FF000000' },
+};
+
+const SIGNATURE_ROWS = [
+  {
+    leftText: 'ผู้จัดทำ',
+    rightText: 'ผู้ตรวจสอบ',
+    height: 28,
+    isHeading: true,
+  },
+  {
+    leftText: '(..............................)',
+    rightText: '(..............................)',
+    height: 52,
+  },
+  {
+    leftText: 'IT Support',
+    rightText: 'IT Mgr',
+    height: 28,
+  },
+  {
+    leftText: 'วันที่ ....../....../......',
+    rightText: 'วันที่ ....../....../......',
+    height: 28,
+  },
+] as const;
+
+export function addSignatureBlock(
+  worksheet: ExcelJS.Worksheet,
+  startRow: number,
+  endColumn: number,
+  styles: TemplateStyles,
+  options: { columnCount?: number } = {}
+) {
+  const safeEndColumn = Math.max(2, endColumn);
+  const blockColumnCount = Math.min(
+    Math.max(2, options.columnCount ?? 6),
+    safeEndColumn
+  );
+  const startColumn = safeEndColumn - blockColumnCount + 1;
+  const leftColumnCount = Math.floor(blockColumnCount / 2);
+  const leftEndColumn = startColumn + leftColumnCount - 1;
+  const rightStartColumn = leftEndColumn + 1;
+  const endRow = startRow + SIGNATURE_ROWS.length - 1;
+
+  SIGNATURE_ROWS.forEach((signatureRow, index) => {
+    const rowNumber = startRow + index;
+    const row = worksheet.getRow(rowNumber);
+    const isHeading = 'isHeading' in signatureRow && signatureRow.isHeading;
+    row.height = signatureRow.height;
+
+    applySignatureBorders(
+      worksheet,
+      rowNumber,
+      startRow,
+      endRow,
+      startColumn,
+      safeEndColumn,
+      leftEndColumn
+    );
+
+    worksheet.mergeCells(rowNumber, startColumn, rowNumber, leftEndColumn);
+    worksheet.mergeCells(rowNumber, rightStartColumn, rowNumber, safeEndColumn);
+
+    applySignatureCell(row.getCell(startColumn), signatureRow.leftText, styles, isHeading);
+    applySignatureCell(
+      row.getCell(rightStartColumn),
+      signatureRow.rightText,
+      styles,
+      isHeading
+    );
+  });
+}
+
+export function applyLandscapeA4PrintSetup(worksheet: ExcelJS.Worksheet) {
+  worksheet.pageSetup.paperSize = 9;
+  worksheet.pageSetup.orientation = 'landscape';
+  worksheet.pageSetup.fitToPage = true;
+  worksheet.pageSetup.fitToWidth = 1;
+  worksheet.pageSetup.fitToHeight = 0;
+  worksheet.pageSetup.printTitlesRow = '1:3';
+  worksheet.pageSetup.margins = {
+    left: 0.25,
+    right: 0.25,
+    top: 0.35,
+    bottom: 0.35,
+    header: 0.15,
+    footer: 0.15,
+  };
+}
+
+function applySignatureBorders(
+  worksheet: ExcelJS.Worksheet,
+  rowNumber: number,
+  startRow: number,
+  endRow: number,
+  startColumn: number,
+  endColumn: number,
+  leftEndColumn: number
+) {
+  for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
+    const cell = worksheet.getRow(rowNumber).getCell(columnNumber);
+    const border: Partial<ExcelJS.Borders> = {
+      bottom: SIGNATURE_BORDER,
+    };
+
+    if (rowNumber === startRow) border.top = SIGNATURE_BORDER;
+    if (rowNumber === endRow) border.bottom = SIGNATURE_BORDER;
+    if (columnNumber === startColumn) border.left = SIGNATURE_BORDER;
+    if (columnNumber === endColumn) border.right = SIGNATURE_BORDER;
+
+    if (columnNumber === leftEndColumn) {
+      border.right = SIGNATURE_BORDER;
+    }
+
+    if (columnNumber === leftEndColumn + 1) {
+      border.left = SIGNATURE_BORDER;
+    }
+
+    cell.border = border as ExcelJS.Borders;
+  }
+}
+
+function applySignatureCell(
+  cell: ExcelJS.Cell,
+  value: string,
+  styles: TemplateStyles,
+  isHeading?: boolean
+) {
+  cell.value = value;
+  applyCellStyle(cell, {
+    font: isHeading ? styles.headerFont : styles.dataFont,
+    alignment: {
+      ...styles.dataAlign,
+      horizontal: 'center',
+      vertical: 'middle',
+      wrapText: true,
+    },
+  });
+}

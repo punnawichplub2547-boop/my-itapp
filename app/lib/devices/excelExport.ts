@@ -1,7 +1,9 @@
 import ExcelJS from 'exceljs';
 import type { Device } from '../../types';
 import {
+  addSignatureBlock,
   applyCellStyle,
+  applyLandscapeA4PrintSetup,
   loadTemplateStyles,
 } from '../reports/excelTemplate';
 import { parseDeviceDate } from './warrantyAlerts';
@@ -96,20 +98,12 @@ export async function buildDeviceInventoryXlsx(devices: Device[]): Promise<Buffe
   ws.mergeCells(2, 1, 2, headerSpan);
   ws.getRow(2).height = 30;
   applyCellStyle(ws.getRow(2).getCell(1), {
-    font: styles.titleFont,
-    alignment: styles.titleAlign,
-  });
-  ws.getRow(2).getCell(1).value = styles.companyText;
-
-  ws.mergeCells(3, 1, 3, headerSpan);
-  ws.getRow(3).height = 30;
-  applyCellStyle(ws.getRow(3).getCell(1), {
     font: styles.subtitleFont,
     alignment: styles.subtitleAlign,
   });
-  ws.getRow(3).getCell(1).value = styles.subtitleText;
+  ws.getRow(2).getCell(1).value = styles.subtitleText;
 
-  const headerRow = ws.getRow(4);
+  const headerRow = ws.getRow(3);
   headerRow.height = 28;
   HEADER_LABELS.forEach((label, idx) => {
     const cell = headerRow.getCell(idx + 1);
@@ -123,7 +117,7 @@ export async function buildDeviceInventoryXlsx(devices: Device[]): Promise<Buffe
   });
 
   devices.forEach((device, i) => {
-    const rowNum = 5 + i;
+    const rowNum = 4 + i;
     const row = ws.getRow(rowNum);
     row.height = 24;
     const values = deviceToReportRow(device, i);
@@ -138,7 +132,10 @@ export async function buildDeviceInventoryXlsx(devices: Device[]): Promise<Buffe
     });
   });
 
-  ws.views = [{ state: 'frozen', ySplit: 4 }];
+  addSignatureBlock(ws, 5 + devices.length, headerSpan, styles, { columnCount: 4 });
+  applyLandscapeA4PrintSetup(ws);
+
+  ws.views = [{ state: 'frozen', ySplit: 3 }];
 
   const buffer = await wb.xlsx.writeBuffer();
   return Buffer.from(buffer);

@@ -8,7 +8,7 @@ import {
   ticketToReportRow,
 } from '../lib/reports/excelExport';
 import type { RepairTicket } from '../types';
-import { TicketReportModal } from './ReportsView';
+import ReportsView, { TicketReportModal } from './ReportsView';
 
 const SAMPLE_TICKET: RepairTicket = {
   id: 'TK-100',
@@ -33,15 +33,13 @@ test('uses report-specific Excel headers for exported tickets', () => {
     'Ticket ID',
     'Device',
     'Department',
-    'Employee',
+    'Description',
+    'Solution',
     'Email',
     'Problem Type',
-    'Priority',
-    'Status',
     'Created',
     'Completed',
-    'Description',
-    'Notes',
+    'Status',
   ]);
 });
 
@@ -51,16 +49,39 @@ test('maps completed tickets into the report Excel row schema', () => {
     'TK-100',
     'OptiPlex 360',
     'IT',
-    'chakrit',
-    'chakrit@example.com',
-    'Hardware Failure',
-    'High',
-    'Completed',
-    '01/05/2026',
-    '02/05/2026',
     'No display after boot.',
     '',
+    'chakrit@example.com',
+    'Hardware Failure',
+    '01/05/2026',
+    '02/05/2026',
+    'Completed',
   ]);
+});
+
+test('maps technical note content into the report solution without note metadata', () => {
+  const row = ticketToReportRow(
+    {
+      ...SAMPLE_TICKET,
+      notes: [
+        {
+          id: 'note-1',
+          author: 'admin@repairlink.local',
+          content: 'Replace damaged cable.',
+          timestamp: '2026-05-02T09:00:00.000Z',
+        },
+        {
+          id: 'note-2',
+          author: 'it.support@repairlink.local',
+          content: 'Confirmed the device boots normally.',
+          timestamp: '2026-05-02T09:30:00.000Z',
+        },
+      ],
+    },
+    0
+  );
+
+  assert.equal(row[5], 'Replace damaged cable.\nConfirmed the device boots normally.');
 });
 
 test('report ticket modal omits legacy activity and footer labels', () => {
@@ -74,4 +95,13 @@ test('report ticket modal omits legacy activity and footer labels', () => {
   assert.doesNotMatch(markup, /Activity Snapshot/);
   assert.doesNotMatch(markup, /Repair Report Console/);
   assert.match(markup, /Close Detail/);
+});
+
+test('renders monthly report controls and optional cross-month export flow', () => {
+  const markup = renderToStaticMarkup(React.createElement(ReportsView));
+
+  assert.match(markup, /Report Month/);
+  assert.match(markup, /type="month"/);
+  assert.match(markup, /Export Excel/);
+  assert.doesNotMatch(markup, /last 30 days/i);
 });
