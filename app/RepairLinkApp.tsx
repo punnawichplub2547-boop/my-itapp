@@ -367,7 +367,7 @@ export default function App({
         <footer className="bg-surface-container-low px-8 py-3 border-t border-outline-variant text-[11px] text-secondary">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>&copy; 2024 RepairLink Enterprise Admin Console v2.5.0 | Created by Punnawich, Nutnicha, Naichanok</span>
+            <span>&copy; 2024 RepairLink Enterprise Admin Console v2.5.0 | Created by Punnawich </span>
           </div>
         </footer>
       </main>
