@@ -152,7 +152,6 @@ export default function App({
     await fetch('/api/auth/logout', { method: 'POST' });
     setCurrentView('login');
     router.replace('/');
-    router.refresh();
   }
 
   function buildSearchHref(resultType: AppSearchResultType, identifier: string) {
@@ -198,7 +197,7 @@ export default function App({
             </div>
             {isSidebarOpen && (
               <div>
-                <h1 className="font-bold text-lg leading-tight">RepairLink</h1>
+                <h1 className="font-bold text-lg leading-tight">IT System</h1>
                 <p className="text-[10px] text-primary-fixed-dim/70 uppercase">Management Portal</p>
               </div>
             )}
@@ -367,7 +366,7 @@ export default function App({
         <footer className="bg-surface-container-low px-8 py-3 border-t border-outline-variant text-[11px] text-secondary">
           <div className="flex items-center gap-2">
             <ShieldCheck className="w-3.5 h-3.5" />
-            <span>&copy; 2024 RepairLink Enterprise Admin Console v2.5.0 | Created by Punnawich </span>
+            <span>&copy; 2024 IT System Enterprise Admin Console v2.5.0 | Created by Punnawich </span>
           </div>
         </footer>
       </main>

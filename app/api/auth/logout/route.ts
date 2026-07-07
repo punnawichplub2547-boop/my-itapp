@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { SESSION_COOKIE_NAME } from '../../../lib/auth/mockUser';
+import { SESSION_COOKIE_NAME, shouldUseSecureSessionCookie } from '../../../lib/auth/mockUser';
 
 export const runtime = 'nodejs';
 
@@ -11,7 +11,7 @@ export async function POST() {
     value: '',
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: shouldUseSecureSessionCookie(),
     path: '/',
     maxAge: 0,
   });
