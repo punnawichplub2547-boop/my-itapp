@@ -118,7 +118,11 @@ export function buildAssignmentHistory(device: Device): AssignmentHistoryRow[] {
     {
       id: `${device.deviceId}-assignment-current`,
       assetUser: device.assignedTo || 'Unassigned',
-      assetUserMeta: device.assignedTo ? deriveAssignmentIdentity(device.assignedTo) : 'No active custodian',
+      assetUserMeta: device.assignedEmail
+        ? device.assignedEmail
+        : device.assignedTo
+        ? deriveAssignmentIdentity(device.assignedTo)
+        : 'No active custodian',
       department: device.department || 'Unspecified',
       assignedOn: formatDateValue(device.updatedAt || device.createdAt || device.installDate),
       returnedOn: device.assignedTo ? 'Active session' : 'Awaiting assignment',

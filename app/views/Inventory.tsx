@@ -425,7 +425,7 @@ export default function Inventory({
                         <div className="min-w-0">
                           <p className="truncate font-bold text-primary">{device.assignedTo}</p>
                           <p className="truncate text-[10px] font-medium text-outline">
-                            {deriveAssignmentIdentity(device.assignedTo)}
+                            {device.assignedEmail || deriveAssignmentIdentity(device.assignedTo)}
                           </p>
                         </div>
                       </div>
@@ -1042,14 +1042,15 @@ export function DeviceDetailModal({
                         <p className="truncate text-2xl font-black text-primary">
                           {device.assignedTo || 'Unassigned'}
                         </p>
-                        {device.assignedEmail && (
+                        {device.assignedEmail ? (
                           <p className="truncate text-sm font-bold text-slate-600">
                             {device.assignedEmail}
                           </p>
+                        ) : (
+                          <p className="truncate text-sm font-black uppercase tracking-[0.12em] text-slate-500">
+                            {device.assignedTo ? deriveAssignmentIdentity(device.assignedTo) : 'No active custodian'}
+                          </p>
                         )}
-                        <p className="truncate text-sm font-black uppercase tracking-[0.12em] text-slate-500">
-                          {device.assignedTo ? deriveAssignmentIdentity(device.assignedTo) : 'No active custodian'}
-                        </p>
                       </div>
                     </div>
                   </div>
