@@ -187,7 +187,7 @@ export default function Inventory({
     }
   }
 
-  async function saveAssignment(deviceId: string, assignedTo: string) {
+  async function saveAssignment(deviceId: string, assignedTo: string, assignedEmail: string) {
     setInventoryError('');
 
     try {
@@ -196,7 +196,7 @@ export default function Inventory({
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ assignedTo }),
+        body: JSON.stringify({ assignedTo, assignedEmail }),
       });
       const result = await response.json();
 
@@ -208,7 +208,7 @@ export default function Inventory({
       setDevices((items) =>
         items.map((device) =>
           device.deviceId === deviceId
-            ? result.device ?? { ...device, assignedTo }
+            ? result.device ?? { ...device, assignedTo, assignedEmail }
             : device
         )
       );
@@ -217,6 +217,35 @@ export default function Inventory({
     } catch {
       setInventoryError('Unable to reach the device database API.');
       return false;
+    }
+  }
+
+  async function saveSpecs(deviceId: string, specs: Partial<Device>) {
+    setInventoryError('');
+
+    try {
+      const response = await fetch(`/api/devices/${encodeURIComponent(deviceId)}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ specs }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        setInventoryError(result.error ?? 'Unable to update device specifications.');
+        throw new Error(result.error ?? 'Unable to update device specifications.');
+      }
+
+      setDevices((items) =>
+        items.map((device) =>
+          device.deviceId === deviceId ? result.device ?? { ...device, ...specs } : device
+        )
+      );
+    } catch (error) {
+      setInventoryError(error instanceof Error ? error.message : 'Unable to reach the device database API.');
+      throw error;
     }
   }
 
@@ -500,6 +529,7 @@ export default function Inventory({
             }}
             onSaveStatus={saveStatus}
             onDeleteDevice={deleteDevice}
+            onSaveSpecs={saveSpecs}
           />
         )}
         {isAssignModalOpen && targetDevice && (
@@ -510,8 +540,8 @@ export default function Inventory({
               setIsAssignModalOpen(false);
               setTargetDeviceId(null);
             }}
-            onSaveAssignment={async (deviceId, assignedTo) => {
-              const didSave = await saveAssignment(deviceId, assignedTo);
+            onSaveAssignment={async (deviceId, assignedTo, assignedEmail) => {
+              const didSave = await saveAssignment(deviceId, assignedTo, assignedEmail);
 
               if (didSave) {
                 setIsAssignModalOpen(false);
@@ -563,6 +593,7 @@ export function DeviceDetailModal({
   onEditAssignment,
   onSaveStatus,
   onDeleteDevice,
+  onSaveSpecs,
 }: {
   device: Device;
   tickets?: RepairTicket[];
@@ -570,6 +601,7 @@ export function DeviceDetailModal({
   onEditAssignment: (deviceId: string) => void;
   onSaveStatus: (deviceId: string, status: Device['status']) => Promise<void>;
   onDeleteDevice: (deviceId: string) => Promise<void>;
+  onSaveSpecs: (deviceId: string, specs: Partial<Device>) => Promise<void>;
 }) {
   const [activeTab, setActiveTab] = useState<DeviceDetailTabKey>('hardware-os');
   const [draftStatus, setDraftStatus] = useState<Device['status']>(device.status);
@@ -579,6 +611,55 @@ export function DeviceDetailModal({
   const [deleteError, setDeleteError] = useState('');
   const [showWeakMatches, setShowWeakMatches] = useState(false);
   const [persistedRepairEvents, setPersistedRepairEvents] = useState<DeviceRepairEvent[]>([]);
+
+  // Specs editing state
+  const [isEditingSpecs, setIsEditingSpecs] = useState(false);
+  const [isSavingSpecs, setIsSavingSpecs] = useState(false);
+  const [specsError, setSpecsError] = useState('');
+
+  // Draft specs values
+  const [draftCpu, setDraftCpu] = useState(device.cpu || '');
+  const [draftRam, setDraftRam] = useState(device.ram || '');
+  const [draftHdd, setDraftHdd] = useState(device.hdd || '');
+  const [draftDeviceType, setDraftDeviceType] = useState<Device['deviceType']>(device.deviceType || 'Unknown');
+  const [draftOs, setDraftOs] = useState(device.os || '');
+  const [draftOsLicense, setDraftOsLicense] = useState(device.osLicense || '');
+  const [draftMsOfficeVersion, setDraftMsOfficeVersion] = useState(device.msOfficeVersion || '');
+  const [draftIpAddress, setDraftIpAddress] = useState(device.ipAddress || '');
+  const [draftIpMode, setDraftIpMode] = useState<Device['ipMode']>(device.ipMode || 'DHCP');
+  const [draftDepartment, setDraftDepartment] = useState(device.department || '');
+  const [draftAssetNo, setDraftAssetNo] = useState(device.assetNo || '');
+  const [draftInstallDate, setDraftInstallDate] = useState(device.installDate || '');
+  const [draftWarranty, setDraftWarranty] = useState(device.warranty || '');
+  const [draftYearValue, setDraftYearValue] = useState(device.yearValue || '');
+
+  async function handleSaveSpecs() {
+    setIsSavingSpecs(true);
+    setSpecsError('');
+    try {
+      await onSaveSpecs(device.deviceId, {
+        cpu: draftCpu.trim(),
+        ram: draftRam.trim(),
+        hdd: draftHdd.trim(),
+        deviceType: draftDeviceType,
+        os: draftOs.trim(),
+        osLicense: draftOsLicense.trim(),
+        msOfficeVersion: draftMsOfficeVersion.trim(),
+        ipAddress: draftIpMode === 'Manual' ? draftIpAddress.trim() : '',
+        ipMode: draftIpMode,
+        department: draftDepartment.trim(),
+        assetNo: draftAssetNo.trim(),
+        installDate: draftInstallDate,
+        warranty: draftWarranty.trim(),
+        yearValue: draftYearValue.trim(),
+      });
+      setIsEditingSpecs(false);
+    } catch (err) {
+      setSpecsError(err instanceof Error ? err.message : 'Failed to save specs.');
+    } finally {
+      setIsSavingSpecs(false);
+    }
+  }
 
   useEffect(() => {
     void fetch(`/api/devices/${encodeURIComponent(device.deviceId)}/repair-events`)
@@ -719,30 +800,229 @@ export function DeviceDetailModal({
             <div className="grid gap-6 xl:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
               <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
                 <div className="space-y-10">
+                  {/* Compute & Hardware */}
                   <div>
-                    <div className="mb-6 flex items-center gap-3 text-primary">
-                      <div className="h-2 w-2 rounded-full bg-primary" />
-                      <h4 className="text-lg font-black uppercase tracking-[0.22em]">Compute & Hardware</h4>
+                    <div className="mb-6 flex items-center justify-between border-b border-outline-variant/30 pb-4">
+                      <div className="flex items-center gap-3 text-primary">
+                        <div className="h-2 w-2 rounded-full bg-primary" />
+                        <h4 className="text-lg font-black uppercase tracking-[0.22em]">Compute & Hardware</h4>
+                      </div>
+                      {!isEditingSpecs ? (
+                        <button
+                          type="button"
+                          onClick={() => setIsEditingSpecs(true)}
+                          className="rounded-xl border border-outline-variant bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-primary transition-all hover:border-primary"
+                        >
+                          Edit Specs
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isSavingSpecs}
+                            onClick={handleSaveSpecs}
+                            className="rounded-xl bg-primary px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-white transition-all hover:bg-primary-container disabled:opacity-50"
+                          >
+                            {isSavingSpecs ? 'Saving' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isSavingSpecs}
+                            onClick={() => {
+                              setIsEditingSpecs(false);
+                              setDraftCpu(device.cpu || '');
+                              setDraftRam(device.ram || '');
+                              setDraftHdd(device.hdd || '');
+                              setDraftDeviceType(device.deviceType || 'Unknown');
+                              setDraftOs(device.os || '');
+                              setDraftOsLicense(device.osLicense || '');
+                              setDraftMsOfficeVersion(device.msOfficeVersion || '');
+                              setDraftIpAddress(device.ipAddress || '');
+                              setDraftIpMode(device.ipMode || 'DHCP');
+                              setDraftDepartment(device.department || '');
+                              setDraftAssetNo(device.assetNo || '');
+                              setDraftInstallDate(device.installDate || '');
+                              setDraftWarranty(device.warranty || '');
+                              setDraftYearValue(device.yearValue || '');
+                              setSpecsError('');
+                            }}
+                            className="rounded-xl border border-outline-variant bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-secondary transition-all hover:border-primary hover:text-primary disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      )}
                     </div>
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <HardwareMetric label="Processor (CPU)" value={device.cpu || 'Not recorded'} />
-                      <HardwareMetric label="Memory (RAM)" value={device.ram || 'Not recorded'} />
-                      <HardwareMetric label="Storage (HDD/SSD)" value={device.hdd || 'Not recorded'} />
-                      <HardwareMetric label="Device Type" value={device.deviceType || 'Unknown'} />
-                    </div>
+
+                    {specsError && (
+                      <div className="mb-4 rounded-xl border border-error/20 bg-error/5 p-3 text-xs text-error font-medium">
+                        {specsError}
+                      </div>
+                    )}
+
+                    {!isEditingSpecs ? (
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <HardwareMetric label="Processor (CPU)" value={device.cpu || 'Not recorded'} />
+                        <HardwareMetric label="Memory (RAM)" value={device.ram || 'Not recorded'} />
+                        <HardwareMetric label="Storage (HDD/SSD)" value={device.hdd || 'Not recorded'} />
+                        <HardwareMetric label="Device Type" value={device.deviceType || 'Unknown'} />
+                      </div>
+                    ) : (
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Processor (CPU)</span>
+                          <input
+                            type="text"
+                            value={draftCpu}
+                            onChange={(e) => setDraftCpu(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Memory (RAM)</span>
+                          <input
+                            type="text"
+                            value={draftRam}
+                            onChange={(e) => setDraftRam(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Storage (HDD/SSD)</span>
+                          <input
+                            type="text"
+                            value={draftHdd}
+                            onChange={(e) => setDraftHdd(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Device Type</span>
+                          <select
+                            value={draftDeviceType}
+                            onChange={(e) => setDraftDeviceType(e.target.value as Device['deviceType'])}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          >
+                            <option value="Notebook">Notebook</option>
+                            <option value="PC">PC</option>
+                            <option value="Server">Server</option>
+                            <option value="Desktop">Desktop</option>
+                            <option value="Laptop">Laptop</option>
+                            <option value="Unknown">Unknown</option>
+                          </select>
+                        </label>
+                      </div>
+                    )}
                   </div>
 
+                  {/* Software Environment */}
                   <div className="border-t border-slate-200 pt-10">
                     <div className="mb-6 flex items-center gap-3 text-primary">
                       <div className="h-2 w-2 rounded-full bg-primary" />
-                      <h4 className="text-lg font-black uppercase tracking-[0.22em]">Software Environment</h4>
+                      <h4 className="text-lg font-black uppercase tracking-[0.22em]">Software & Networking</h4>
                     </div>
-                    <div className="grid gap-6 md:grid-cols-2">
-                      <HardwareMetric label="Operating System" value={device.os || 'Not recorded'} />
-                      <HardwareMetric label="OS License / Key" value={device.osLicense || 'Not recorded'} />
-                      <HardwareMetric label="Microsoft Office" value={device.msOfficeVersion || 'Not recorded'} />
-                      <HardwareMetric label="IP Addressing" value={device.ipAddress || device.ipMode} />
-                    </div>
+                    {!isEditingSpecs ? (
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <HardwareMetric label="Operating System" value={device.os || 'Not recorded'} />
+                        <HardwareMetric label="OS License / Key" value={device.osLicense || 'Not recorded'} />
+                        <HardwareMetric label="Microsoft Office" value={device.msOfficeVersion || 'Not recorded'} />
+                        <HardwareMetric label="IP Addressing" value={device.ipAddress ? `${device.ipAddress} (${device.ipMode})` : device.ipMode} />
+                      </div>
+                    ) : (
+                      <div className="grid gap-6 md:grid-cols-2">
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Operating System</span>
+                          <input
+                            type="text"
+                            value={draftOs}
+                            onChange={(e) => setDraftOs(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">OS License / Key</span>
+                          <input
+                            type="text"
+                            value={draftOsLicense}
+                            onChange={(e) => setDraftOsLicense(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Microsoft Office</span>
+                          <input
+                            type="text"
+                            value={draftMsOfficeVersion}
+                            onChange={(e) => setDraftMsOfficeVersion(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <div className="grid grid-cols-2 gap-3">
+                          <label className="space-y-1">
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">IP Mode</span>
+                            <select
+                              value={draftIpMode}
+                              onChange={(e) => {
+                                const mode = e.target.value as Device['ipMode'];
+                                setDraftIpMode(mode);
+                                if (mode === 'DHCP') setDraftIpAddress('');
+                              }}
+                              className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                            >
+                              <option value="DHCP">DHCP</option>
+                              <option value="Manual">Manual</option>
+                            </select>
+                          </label>
+                          {draftIpMode === 'Manual' && (
+                            <label className="space-y-1">
+                              <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">IP Address</span>
+                              <input
+                                type="text"
+                                value={draftIpAddress}
+                                onChange={(e) => setDraftIpAddress(e.target.value)}
+                                className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                              />
+                            </label>
+                          )}
+                        </div>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Department</span>
+                          <input
+                            type="text"
+                            value={draftDepartment}
+                            onChange={(e) => setDraftDepartment(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Asset No</span>
+                          <input
+                            type="text"
+                            value={draftAssetNo}
+                            onChange={(e) => setDraftAssetNo(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Install Date</span>
+                          <input
+                            type="date"
+                            value={draftInstallDate}
+                            onChange={(e) => setDraftInstallDate(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                        <label className="space-y-1">
+                          <span className="text-[10px] font-bold uppercase tracking-widest text-secondary pl-1">Warranty Term</span>
+                          <input
+                            type="text"
+                            value={draftWarranty}
+                            onChange={(e) => setDraftWarranty(e.target.value)}
+                            className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
+                          />
+                        </label>
+                      </div>
+                    )}
                   </div>
                 </div>
               </section>
@@ -762,6 +1042,11 @@ export function DeviceDetailModal({
                         <p className="truncate text-2xl font-black text-primary">
                           {device.assignedTo || 'Unassigned'}
                         </p>
+                        {device.assignedEmail && (
+                          <p className="truncate text-sm font-bold text-slate-600">
+                            {device.assignedEmail}
+                          </p>
+                        )}
                         <p className="truncate text-sm font-black uppercase tracking-[0.12em] text-slate-500">
                           {device.assignedTo ? deriveAssignmentIdentity(device.assignedTo) : 'No active custodian'}
                         </p>
@@ -1154,16 +1439,17 @@ function AssignmentModal({
 }: {
   device: Device;
   onClose: () => void;
-  onSaveAssignment: (deviceId: string, assignedTo: string) => Promise<void>;
+  onSaveAssignment: (deviceId: string, assignedTo: string, assignedEmail: string) => Promise<void>;
 }) {
   const [draftAssignedTo, setDraftAssignedTo] = useState(device.assignedTo);
+  const [draftAssignedEmail, setDraftAssignedEmail] = useState(device.assignedEmail || '');
   const [isSaving, setIsSaving] = useState(false);
 
   async function handleSave() {
     setIsSaving(true);
 
     try {
-      await onSaveAssignment(device.deviceId, draftAssignedTo.trim());
+      await onSaveAssignment(device.deviceId, draftAssignedTo.trim(), draftAssignedEmail.trim());
     } finally {
       setIsSaving(false);
     }
@@ -1207,6 +1493,18 @@ function AssignmentModal({
             />
           </label>
 
+          <label className="space-y-1.5">
+            <span className="pl-1 text-[10px] font-black uppercase tracking-widest text-secondary">
+              User Email
+            </span>
+            <input
+              value={draftAssignedEmail}
+              onChange={(event) => setDraftAssignedEmail(event.target.value)}
+              placeholder="e.g. user@company.com"
+              className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-3 text-sm font-bold text-primary outline-none transition-all focus:border-primary"
+            />
+          </label>
+
           <div className="space-y-3 pt-2">
             <button
               onClick={handleSave}
@@ -1216,7 +1514,10 @@ function AssignmentModal({
               {isSaving ? 'Saving' : 'Save Assignment'}
             </button>
             <button
-              onClick={() => setDraftAssignedTo('')}
+              onClick={() => {
+                setDraftAssignedTo('');
+                setDraftAssignedEmail('');
+              }}
               type="button"
               className="w-full rounded-xl border border-outline-variant px-6 py-3 text-[10px] font-black uppercase tracking-widest text-secondary transition-all hover:border-primary hover:text-primary"
             >

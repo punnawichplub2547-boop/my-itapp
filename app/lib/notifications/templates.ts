@@ -215,7 +215,7 @@ function renderShell({
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td>
-                      <p style="margin:0;color:rgba(255,255,255,.75);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">IT Support Portal</p>
+                      <p style="margin:0;color:rgba(255,255,255,.75);font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;">IT System Portal</p>
                       <p style="margin:4px 0 0;color:#fff;font-size:20px;font-weight:700;line-height:1.3;">${escapeHtml(heading)}</p>
                     </td>
                     <td align="right" style="vertical-align:middle;">
@@ -279,7 +279,7 @@ function renderShell({
                 <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
                   <tr>
                     <td style="padding:12px 28px;">
-                      <p style="margin:0;font-size:11px;color:#b0bac8;">This is an automated notification from the IT Support Portal. Please do not reply to this email.</p>
+                      <p style="margin:0;font-size:11px;color:#b0bac8;">This is an automated notification from the IT System Portal. Please do not reply to this email.</p>
                     </td>
                   </tr>
                 </table>

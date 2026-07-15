@@ -15,6 +15,7 @@ export interface CreateDeviceInput {
   ipAddress: string;
   department: string;
   assignedTo: string;
+  assignedEmail: string;
   deviceType: DeviceType;
   model: string;
   hdd: string;
@@ -36,7 +37,8 @@ export interface DeviceRepository {
   create(device: CreateDeviceInput): Promise<Device>;
   list(): Promise<Device[]>;
   updateStatus(deviceId: string, status: DeviceStatus): Promise<Device>;
-  updateAssignedTo(deviceId: string, assignedTo: string): Promise<Device>;
+  updateAssignedTo(deviceId: string, assignedTo: string, assignedEmail: string): Promise<Device>;
+  updateSpecs(deviceId: string, specs: Partial<CreateDeviceInput>): Promise<Device>;
   updateWarrantyAlertedAt(deviceId: string, warrantyAlertedAt?: string): Promise<Device>;
   upsertMany(devices: Device[]): Promise<void>;
   delete(deviceId: string): Promise<void>;
@@ -53,6 +55,7 @@ interface DeviceRow extends RowDataPacket {
   ipAddress: string;
   department: string;
   assignedTo: string;
+  assignedEmail: string;
   deviceType: string;
   model: string;
   hdd: string;
@@ -130,6 +133,7 @@ export function normalizeCreateDeviceInput(input: unknown): CreateDeviceInput {
     ipAddress: ipMode === 'Manual' ? ipAddress : '',
     department,
     assignedTo: normalizeOptionalText(input.assignedTo),
+    assignedEmail: normalizeOptionalText(input.assignedEmail),
     deviceType: normalizeCreateDeviceType(input.deviceType),
     model: normalizeOptionalText(input.model),
     hdd: normalizeOptionalText(input.hdd),
@@ -171,13 +175,79 @@ export async function updateDeviceStatus(
 export async function updateDeviceAssignedTo(
   deviceId: string,
   assignedTo: unknown,
-  repository: DeviceRepository = getDefaultDeviceRepository()
+  assignedEmailOrRepository: unknown = '',
+  repositoryOrUndefined?: DeviceRepository
 ) {
   if (typeof assignedTo !== 'string') {
     throw new DeviceValidationError('assignedTo must be a string.');
   }
 
-  return repository.updateAssignedTo(normalizeDeviceId(deviceId), assignedTo.trim());
+  let assignedEmail = '';
+  let repository: DeviceRepository;
+
+  if (assignedEmailOrRepository && typeof (assignedEmailOrRepository as any).updateAssignedTo === 'function') {
+    repository = assignedEmailOrRepository as DeviceRepository;
+  } else {
+    if (assignedEmailOrRepository !== undefined && typeof assignedEmailOrRepository !== 'string') {
+      throw new DeviceValidationError('assignedEmail must be a string.');
+    }
+    assignedEmail = typeof assignedEmailOrRepository === 'string' ? assignedEmailOrRepository : '';
+    repository = repositoryOrUndefined || getDefaultDeviceRepository();
+  }
+
+  return repository.updateAssignedTo(normalizeDeviceId(deviceId), assignedTo.trim(), assignedEmail.trim());
+}
+
+export async function updateDeviceSpecs(
+  deviceId: string,
+  specs: unknown,
+  repository: DeviceRepository = getDefaultDeviceRepository()
+) {
+  if (!isRecord(specs)) {
+    throw new DeviceValidationError('Specs payload must be an object.');
+  }
+
+  const cleanSpecs: Partial<CreateDeviceInput> = {};
+  for (const key of [
+    'assetNo',
+    'ipMode',
+    'ipAddress',
+    'department',
+    'deviceType',
+    'model',
+    'hdd',
+    'ram',
+    'cpu',
+    'installDate',
+    'expireDatePrimary',
+    'expireDateSecondary',
+    'warranty',
+    'yearValue',
+    'os',
+    'osLicense',
+    'msOfficeVersion',
+    'notes',
+    'assignedTo',
+    'assignedEmail',
+    'status'
+  ] as const) {
+    if (key in specs) {
+      if (key === 'status') {
+        cleanSpecs[key] = normalizeDeviceStatus(specs[key]);
+      } else if (key === 'ipMode') {
+        cleanSpecs[key] = normalizeIpMode(specs[key]);
+      } else if (key === 'deviceType') {
+        // Allow choosing standard device types
+        if (isDeviceType(specs[key])) {
+          cleanSpecs[key] = specs[key] as DeviceType;
+        }
+      } else {
+        cleanSpecs[key] = typeof specs[key] === 'string' ? (specs[key] as string).trim() : '';
+      }
+    }
+  }
+
+  return repository.updateSpecs(normalizeDeviceId(deviceId), cleanSpecs);
 }
 
 export async function upsertDevices(
@@ -245,10 +315,10 @@ export class MySqlDeviceRepository implements DeviceRepository {
       const db = getConfiguredDeviceDbPool();
       await db.execute<ResultSetHeader>(
         `INSERT INTO devices (
-          deviceId, assetNo, ipMode, ipAddress, department, assignedTo, deviceType,
+          deviceId, assetNo, ipMode, ipAddress, department, assignedTo, assignedEmail, deviceType,
           model, hdd, ram, cpu, installDate, expireDatePrimary, expireDateSecondary,
           warranty, yearValue, os, osLicense, msOfficeVersion, status, notes, warrantyAlertedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         buildDeviceSqlValues(device)
       );
 
@@ -272,6 +342,7 @@ export class MySqlDeviceRepository implements DeviceRepository {
         ipAddress,
         department,
         assignedTo,
+        assignedEmail,
         deviceType,
         model,
         hdd,
@@ -311,11 +382,63 @@ export class MySqlDeviceRepository implements DeviceRepository {
     return this.findByDeviceId(deviceId);
   }
 
-  async updateAssignedTo(deviceId: string, assignedTo: string) {
+  async updateAssignedTo(deviceId: string, assignedTo: string, assignedEmail: string) {
     const db = getConfiguredDeviceDbPool();
     const [result] = await db.execute<ResultSetHeader>(
-      'UPDATE devices SET assignedTo = ? WHERE deviceId = ?',
-      [assignedTo, deviceId]
+      'UPDATE devices SET assignedTo = ?, assignedEmail = ? WHERE deviceId = ?',
+      [assignedTo, assignedEmail, deviceId]
+    );
+
+    if (result.affectedRows === 0) {
+      throw new DeviceNotFoundError(deviceId);
+    }
+
+    return this.findByDeviceId(deviceId);
+  }
+
+  async updateSpecs(deviceId: string, specs: Partial<CreateDeviceInput>) {
+    const db = getConfiguredDeviceDbPool();
+    const fields: string[] = [];
+    const values: string[] = [];
+    const columns = [
+      'assetNo',
+      'ipMode',
+      'ipAddress',
+      'department',
+      'assignedTo',
+      'assignedEmail',
+      'deviceType',
+      'model',
+      'hdd',
+      'ram',
+      'cpu',
+      'installDate',
+      'expireDatePrimary',
+      'expireDateSecondary',
+      'warranty',
+      'yearValue',
+      'os',
+      'osLicense',
+      'msOfficeVersion',
+      'status',
+      'notes'
+    ] as const;
+
+    for (const key of columns) {
+      if (key in specs) {
+        fields.push(`${key} = ?`);
+        values.push(specs[key] ?? '');
+      }
+    }
+
+    if (fields.length === 0) {
+      return this.findByDeviceId(deviceId);
+    }
+
+    values.push(deviceId);
+    const [result] = await db.execute<ResultSetHeader>(
+      `UPDATE devices SET ${fields.join(', ')} WHERE deviceId = ?`,
+      values
     );
 
     if (result.affectedRows === 0) {
@@ -345,16 +468,17 @@ export class MySqlDeviceRepository implements DeviceRepository {
     for (const device of devices) {
       await db.execute<ResultSetHeader>(
         `INSERT INTO devices (
-          deviceId, assetNo, ipMode, ipAddress, department, assignedTo, deviceType,
+          deviceId, assetNo, ipMode, ipAddress, department, assignedTo, assignedEmail, deviceType,
           model, hdd, ram, cpu, installDate, expireDatePrimary, expireDateSecondary,
           warranty, yearValue, os, osLicense, msOfficeVersion, status, notes, warrantyAlertedAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON DUPLICATE KEY UPDATE
           assetNo = VALUES(assetNo),
           ipMode = VALUES(ipMode),
           ipAddress = VALUES(ipAddress),
           department = VALUES(department),
           assignedTo = VALUES(assignedTo),
+          assignedEmail = VALUES(assignedEmail),
           deviceType = VALUES(deviceType),
           model = VALUES(model),
           hdd = VALUES(hdd),
@@ -398,6 +522,7 @@ export class MySqlDeviceRepository implements DeviceRepository {
         ipAddress,
         department,
         assignedTo,
+        assignedEmail,
         deviceType,
         model,
         hdd,
@@ -477,7 +602,7 @@ export class FileDeviceRepository implements DeviceRepository {
     });
   }
 
-  async updateAssignedTo(deviceId: string, assignedTo: string) {
+  async updateAssignedTo(deviceId: string, assignedTo: string, assignedEmail: string) {
     return this.enqueueWrite(async () => {
       const store = await this.readStore();
       const index = store.devices.findIndex((device) => sameDeviceId(device.deviceId, deviceId));
@@ -489,6 +614,30 @@ export class FileDeviceRepository implements DeviceRepository {
       const updated = {
         ...store.devices[index],
         assignedTo,
+        assignedEmail,
+        updatedAt: new Date().toISOString(),
+      };
+
+      const devices = store.devices.slice();
+      devices[index] = updated;
+      await this.writeStore({ devices });
+
+      return updated;
+    });
+  }
+
+  async updateSpecs(deviceId: string, specs: Partial<CreateDeviceInput>) {
+    return this.enqueueWrite(async () => {
+      const store = await this.readStore();
+      const index = store.devices.findIndex((device) => sameDeviceId(device.deviceId, deviceId));
+
+      if (index === -1) {
+        throw new DeviceNotFoundError(deviceId);
+      }
+
+      const updated = {
+        ...store.devices[index],
+        ...specs,
         updatedAt: new Date().toISOString(),
       };
 
@@ -603,6 +752,7 @@ function buildDeviceSqlValues(device: CreateDeviceInput | Device) {
     device.ipAddress,
     device.department,
     device.assignedTo,
+    device.assignedEmail,
     device.deviceType,
     device.model,
     device.hdd,
@@ -630,6 +780,7 @@ function mapDeviceRow(row: DeviceRow): Device {
     ipAddress: row.ipAddress ?? '',
     department: row.department ?? '',
     assignedTo: row.assignedTo ?? '',
+    assignedEmail: row.assignedEmail ?? '',
     deviceType: isDeviceType(row.deviceType) ? row.deviceType : 'Unknown',
     model: row.model ?? '',
     hdd: row.hdd ?? '',
@@ -661,6 +812,7 @@ function buildStoredDevice(device: CreateDeviceInput | Device): Device {
     ipAddress: device.ipAddress,
     department: device.department,
     assignedTo: device.assignedTo,
+    assignedEmail: device.assignedEmail,
     deviceType: device.deviceType,
     model: device.model,
     hdd: device.hdd,
@@ -691,6 +843,7 @@ function normalizeStoredDevice(record: unknown): Device {
       ipAddress: '',
       department: '',
       assignedTo: '',
+      assignedEmail: '',
       deviceType: 'Unknown',
       model: '',
       hdd: '',
@@ -719,6 +872,7 @@ function normalizeStoredDevice(record: unknown): Device {
     ipAddress: normalizeOptionalText(record.ipAddress),
     department: normalizeOptionalText(record.department),
     assignedTo: normalizeOptionalText(record.assignedTo) || legacyAssignedTo,
+    assignedEmail: normalizeOptionalText(record.assignedEmail),
     deviceType: normalizeStoredDeviceType(record.deviceType),
     model: normalizeOptionalText(record.model) || normalizeOptionalText(record.deviceName),
     hdd:

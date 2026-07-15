@@ -30,6 +30,7 @@ export interface Device {
   ipAddress: string;
   department: string;
   assignedTo: string;
+  assignedEmail: string;
   deviceType: DeviceType;
   model: string;
   hdd: string;

@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RepairLink Management System",
+  title: "IT System Management Portal",
   description: "Enterprise IT repair request and asset management portal.",
 };
 

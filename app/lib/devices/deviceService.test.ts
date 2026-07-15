@@ -17,11 +17,12 @@ import {
 const baseInput = {
   deviceId: 'CAR200',
   assetNo: '64',
-  ipMode: 'DHCP',
+  ipMode: 'DHCP' as const,
   ipAddress: '',
   department: 'EN',
   assignedTo: 'sasiluk_en',
-  deviceType: 'Notebook',
+  assignedEmail: '',
+  deviceType: 'Notebook' as const,
   model: 'Thinkbook15 G3 ACL',
   hdd: '500 GB',
   ram: '8',
@@ -34,7 +35,7 @@ const baseInput = {
   os: 'Windows 11 Pro',
   osLicense: 'OEM',
   msOfficeVersion: '2016',
-  status: 'Active',
+  status: 'Active' as const,
   notes: '',
 };
 
@@ -56,6 +57,7 @@ test('normalizes valid workbook-backed device input before persistence', () => {
     ipAddress: '',
     department: 'EN',
     assignedTo: 'sasiluk_en',
+    assignedEmail: '',
     deviceType: 'Notebook',
     model: 'Thinkbook15 G3 ACL',
     hdd: '500 GB',

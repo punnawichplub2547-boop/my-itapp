@@ -133,6 +133,7 @@ test('builds a workbook-backed device payload keyed by deviceId', () => {
       ipAddress: '',
       department: 'IT',
       assignedTo: 'chakrit',
+      assignedEmail: '',
       deviceType: 'PC',
       model: 'OptiPlex 360',
       hdd: '500 GB',

@@ -32,6 +32,7 @@ const INVENTORY_DEVICE: Device = {
   ipAddress: '10.0.0.10',
   department: 'IT',
   assignedTo: 'chakrit',
+  assignedEmail: '',
   deviceType: 'PC',
   model: 'OptiPlex 360',
   hdd: '500 GB',

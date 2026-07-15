@@ -69,7 +69,7 @@ SMTP_PORT=587
 SMTP_SECURE=false
 SMTP_USER=
 SMTP_PASS=
-MAIL_FROM=RepairLink <noreply@example.com>
+MAIL_FROM=IT System <noreply@example.com>
 ```
 
 ## ขั้นตอนที่ 4: ติดตั้ง Dependencies

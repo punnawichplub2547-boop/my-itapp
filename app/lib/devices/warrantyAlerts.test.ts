@@ -21,6 +21,7 @@ function buildDevice(overrides: Partial<Device> = {}): Device {
     ipAddress: '',
     department: 'IT',
     assignedTo: 'owner',
+    assignedEmail: '',
     deviceType: 'Notebook',
     model: 'ThinkBook',
     hdd: '512 GB',

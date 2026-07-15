@@ -23,6 +23,7 @@ const INVENTORY_DEVICE = {
   ipAddress: '10.11.204.45',
   department: 'IT OPERATIONS',
   assignedTo: 'chakrit',
+  assignedEmail: '',
   deviceType: 'Laptop',
   model: 'Dell XPS 13 9310 Elite',
   hdd: '512GB NVMe SSD',

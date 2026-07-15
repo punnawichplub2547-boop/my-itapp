@@ -5,6 +5,7 @@ import {
   DeviceValidationError,
   updateDeviceAssignedTo,
   updateDeviceStatus,
+  updateDeviceSpecs,
 } from '../../../lib/devices/deviceService';
 import { requireAuthenticatedRequest } from '../../../lib/auth/mockUser';
 
@@ -39,8 +40,14 @@ export async function PATCH(
       return Response.json({ device });
     }
 
+    if ('specs' in body) {
+      const device = await updateDeviceSpecs(deviceId, body.specs);
+      return Response.json({ device });
+    }
+
     if (typeof body.assignedTo === 'string') {
-      const device = await updateDeviceAssignedTo(deviceId, body.assignedTo);
+      const assignedEmail = typeof body.assignedEmail === 'string' ? body.assignedEmail : '';
+      const device = await updateDeviceAssignedTo(deviceId, body.assignedTo, assignedEmail);
       return Response.json({ device });
     }
 

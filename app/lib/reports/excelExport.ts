@@ -66,7 +66,7 @@ export async function buildRepairReportXlsx(tickets: RepairTicket[]): Promise<Bu
   const styles = await loadTemplateStyles();
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'RepairLink';
+  wb.creator = 'IT System';
   wb.created = new Date();
 
   const ws = wb.addWorksheet('Repair Report', {

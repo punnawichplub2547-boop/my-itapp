@@ -1,6 +1,6 @@
-# RepairLink
+# IT System
 
-RepairLink is an internal admin web app for IT repair-request tracking and device inventory management.
+IT System is an internal admin web app for IT repair-request tracking and device inventory management.
 
 The project is built with Next.js and MySQL, and is intended primarily for administrator use rather than employee self-service.
 

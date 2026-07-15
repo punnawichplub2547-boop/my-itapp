@@ -96,6 +96,7 @@ export function mapWorkbookRowToDeviceRecord(row: WorkbookRow): Device {
     ipAddress: ipMode === 'Manual' ? rawIp : '',
     department: row['Dept.']?.trim() ?? '',
     assignedTo: row['User Log on']?.trim() ?? '',
+    assignedEmail: '',
     deviceType: normalizeWorkbookDeviceType(row.TYPE),
     model: row.Model?.trim() ?? '',
     hdd: row.HDD?.trim() ?? '',

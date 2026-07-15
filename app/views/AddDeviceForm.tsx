@@ -28,6 +28,7 @@ export interface AddDeviceFormValues {
   ipAddress: string;
   department: string;
   assignedTo: string;
+  assignedEmail: string;
   deviceType: DeviceType;
   model: string;
   hdd: string;
@@ -53,6 +54,7 @@ function createInitialValues(): AddDeviceFormValues {
     ipAddress: '',
     department: '',
     assignedTo: '',
+    assignedEmail: '',
     deviceType: 'Notebook',
     model: '',
     hdd: '',
@@ -99,6 +101,7 @@ export function buildCreateDevicePayload(values: AddDeviceFormValues) {
     ipAddress: values.ipMode === 'Manual' ? values.ipAddress.trim() : '',
     department: values.department.trim(),
     assignedTo: values.assignedTo.trim(),
+    assignedEmail: (values.assignedEmail || '').trim(),
     deviceType: values.deviceType,
     model: values.model.trim(),
     hdd: values.hdd.trim(),
@@ -252,6 +255,14 @@ export default function AddDeviceForm({
                     value={values.assignedTo}
                     onChange={(event) => handleTextInput('assignedTo', event)}
                     placeholder="User logon or blank"
+                    className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none transition-all focus:border-primary"
+                  />
+                </Field>
+                <Field label="Assigned Email">
+                  <input
+                    value={values.assignedEmail}
+                    onChange={(event) => handleTextInput('assignedEmail', event)}
+                    placeholder="User email or blank"
                     className="w-full rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none transition-all focus:border-primary"
                   />
                 </Field>

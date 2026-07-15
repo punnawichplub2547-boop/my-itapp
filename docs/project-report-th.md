@@ -1,8 +1,8 @@
-# รายงานวิเคราะห์และออกแบบระบบ RepairLink
+# รายงานวิเคราะห์และออกแบบระบบ IT System
 
 ## 1. ภาพรวมโครงการ
 
-RepairLink เป็นเว็บแอปพลิเคชันภายในองค์กรสำหรับผู้ดูแลระบบ IT ใช้จัดการข้อมูลอุปกรณ์, สร้างและติดตามรายการแจ้งซ่อม, ตรวจสอบสถานะงานซ่อม, ออกรายงานประจำเดือน และตรวจสอบอายุประกันของอุปกรณ์ ระบบนี้ไม่ได้ออกแบบเป็น public customer portal แต่เป็นเครื่องมือปฏิบัติงานของฝ่าย IT/Admin เป็นหลัก
+IT System เป็นเว็บแอปพลิเคชันภายในองค์กรสำหรับผู้ดูแลระบบ IT ใช้จัดการข้อมูลอุปกรณ์, สร้างและติดตามรายการแจ้งซ่อม, ตรวจสอบสถานะงานซ่อม, ออกรายงานประจำเดือน และตรวจสอบอายุประกันของอุปกรณ์ ระบบนี้ไม่ได้ออกแบบเป็น public customer portal แต่เป็นเครื่องมือปฏิบัติงานของฝ่าย IT/Admin เป็นหลัก
 
 เทคโนโลยีหลักที่ใช้ในโปรเจกต์ปัจจุบัน ได้แก่ Next.js 16 App Router, React 19, TypeScript, MySQL, Excel import/export และ Docker สำหรับการ deploy ภายในองค์กร
 
@@ -35,7 +35,7 @@ flowchart LR
   Admin[IT Administrator]
   Employee[Employee / Device User]
   Manager[IT Manager]
-  System[RepairLink System]
+  System[IT System]
   DB[(MySQL Database)]
   Email[Email / Notification Service]
   Excel[Excel Workbook / Export File]
@@ -51,7 +51,7 @@ flowchart LR
   Email -->|Ticket created/status email| Employee
 ```
 
-คำอธิบาย: ผู้ใช้งานหลักคือ IT Administrator ซึ่งทำงานผ่าน RepairLink System ข้อมูลสำคัญถูกบันทึกใน MySQL ส่วน Employee เป็นแหล่งข้อมูลของคำขอซ่อมและเป็นผู้รับ notification เมื่อมีการแจ้งซ่อมหรือเปลี่ยนสถานะ
+คำอธิบาย: ผู้ใช้งานหลักคือ IT Administrator ซึ่งทำงานผ่าน IT System ข้อมูลสำคัญถูกบันทึกใน MySQL ส่วน Employee เป็นแหล่งข้อมูลของคำขอซ่อมและเป็นผู้รับ notification เมื่อมีการแจ้งซ่อมหรือเปลี่ยนสถานะ
 
 ## 5. DFD Level 1: กระบวนการหลัก
 
@@ -231,7 +231,7 @@ flowchart LR
 3. เก็บเอกสารจริง: ขอไฟล์ workbook inventory, ตัวอย่าง ticket/report, field ที่ต้องส่งต่อหัวหน้า
 4. สัมภาษณ์ pain point: ถามว่างานไหนซ้ำซ้อน, ข้อมูลไหนหายบ่อย, รายงานไหนทำช้า, จุดไหนผิดพลาดบ่อย
 5. เขียน as-is flow: วาดขั้นตอนเดิมตั้งแต่รับแจ้งปัญหา จนซ่อมเสร็จและรายงาน
-6. เขียน to-be flow: แปลงงานเดิมเป็น flow บนระบบ RepairLink
+6. เขียน to-be flow: แปลงงานเดิมเป็น flow บนระบบ IT System
 7. แยก requirement: แบ่งเป็น functional, non-functional, data, security, deployment และ reporting
 8. จัด priority: แยก Must have, Should have, Could have เพื่อกำหนด MVP
 9. ทำ prototype/wireframe: ให้ผู้ใช้ดูหน้าจอก่อนลงรายละเอียด coding
@@ -262,4 +262,4 @@ flowchart LR
 
 ## 16. สรุป
 
-RepairLink เป็นระบบภายในสำหรับช่วยฝ่าย IT ลดงานซ้ำจากการจัดการ Excel และ ticket แบบกระจัดกระจาย จุดแข็งของระบบคือรวม inventory, repair request, status tracking, report และ warranty audit ไว้ใน dashboard เดียว พร้อมออกแบบให้เชื่อม MySQL และส่งออก Excel ได้ เหมาะสำหรับนำไปใช้เป็น MVP ภายในองค์กร แล้วต่อยอดด้วย UAT, email production adapter, backup strategy และ permission ที่ละเอียดขึ้นในรอบถัดไป
+IT System เป็นระบบภายในสำหรับช่วยฝ่าย IT ลดงานซ้ำจากการจัดการ Excel และ ticket แบบกระจัดกระจาย จุดแข็งของระบบคือรวม inventory, repair request, status tracking, report และ warranty audit ไว้ใน dashboard เดียว พร้อมออกแบบให้เชื่อม MySQL และส่งออก Excel ได้ เหมาะสำหรับนำไปใช้เป็น MVP ภายในองค์กร แล้วต่อยอดด้วย UAT, email production adapter, backup strategy และ permission ที่ละเอียดขึ้นในรอบถัดไป

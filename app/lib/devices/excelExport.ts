@@ -74,7 +74,7 @@ export async function buildDeviceInventoryXlsx(devices: Device[]): Promise<Buffe
   const styles = await loadTemplateStyles();
 
   const wb = new ExcelJS.Workbook();
-  wb.creator = 'RepairLink';
+  wb.creator = 'IT System';
   wb.created = new Date();
 
   const ws = wb.addWorksheet('IT System Asset', {

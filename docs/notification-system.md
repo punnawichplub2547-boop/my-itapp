@@ -1,4 +1,4 @@
-# RepairLink Notification System
+# IT System Notification System
 
 ## Goal
 
