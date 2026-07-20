@@ -147,3 +147,18 @@ test('renders customer email with both html and text bodies', () => {
   assert.match(email.html, /Closed/);
   assert.match(email.text, /Dell Latitude 7440/);
 });
+
+test('renders customer email with technician note when notes exist', () => {
+  const noteTicket: RepairTicket = {
+    ...ticket,
+    status: 'In Progress',
+    notes: [
+      { id: '1', author: 'admin@example.com', content: 'ไม่ไหว', timestamp: '2026-07-20T04:48:00.000Z' },
+    ],
+  };
+  const event = createTicketCreatedEvent(noteTicket, 'admin@example.com');
+  const email = renderCustomerEmail(event);
+
+  assert.match(email.html, /Technician Note/);
+  assert.match(email.html, /ไม่ไหว/);
+});

@@ -78,9 +78,9 @@ function renderCreatedEmail(
       badgeLabel: 'New Ticket',
       badgeColor: '#1a73e8',
       body: `
-        <p style="margin:0 0 16px;font-size:14px;color:#3d4d60;line-height:1.6;">${escapeHtml(summary)}</p>
+        <p style="margin:0 0 16px;font-size:16px;color:#3d4d60;line-height:1.6;">${escapeHtml(summary)}</p>
         ${renderTicketDetails(event)}
-        <p style="margin:16px 0 24px;font-size:13px;color:#526070;line-height:1.6;">The IT Support Team will review your request and keep you updated as the repair progresses.</p>
+        <p style="margin:16px 0 24px;font-size:14px;color:#526070;line-height:1.6;">The IT Support Team will review your request and keep you updated as the repair progresses.</p>
       `,
     }),
   };
@@ -119,9 +119,9 @@ function renderClosedEmail(
       badgeLabel: 'Closed',
       badgeColor: '#34a853',
       body: `
-        <p style="margin:0 0 16px;font-size:14px;color:#3d4d60;line-height:1.6;">${escapeHtml(summary)}</p>
+        <p style="margin:0 0 16px;font-size:16px;color:#3d4d60;line-height:1.6;">${escapeHtml(summary)}</p>
         ${renderTicketDetails(event)}
-        <p style="margin:16px 0 24px;font-size:13px;color:#526070;line-height:1.6;">If the issue returns, please open a new repair request and reference this ticket ID.</p>
+        <p style="margin:16px 0 24px;font-size:14px;color:#526070;line-height:1.6;">If the issue returns, please open a new repair request and reference this ticket ID.</p>
       `,
     }),
   };
@@ -160,9 +160,9 @@ function renderStatusUpdatedEmail(
       badgeLabel: 'Status Updated',
       badgeColor: statusColor(ticket.status),
       body: `
-        <p style="margin:0 0 16px;font-size:14px;color:#3d4d60;line-height:1.6;">${escapeHtml(summary)}</p>
+        <p style="margin:0 0 16px;font-size:16px;color:#3d4d60;line-height:1.6;">${escapeHtml(summary)}</p>
         ${renderTicketDetails(event)}
-        <p style="margin:16px 0 24px;font-size:13px;color:#526070;line-height:1.6;">The IT Support Team will send another update if the repair status changes.</p>
+        <p style="margin:16px 0 24px;font-size:14px;color:#526070;line-height:1.6;">The IT Support Team will send another update if the repair status changes.</p>
       `,
     }),
   };
@@ -200,7 +200,7 @@ function renderShell({
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(heading)} - ${escapeHtml(ticketId)}</title>
   </head>
-  <body style="margin:0;padding:0;background:#f0f4f8;color:#1d2433;font-family:'Segoe UI',Arial,sans-serif;">
+  <body style="margin:0;padding:0;background:#f0f4f8;color:#1d2433;font-family:'Leelawadee UI','Segoe UI','Sarabun',Tahoma,Arial,sans-serif;">
     <!-- Preview text (hidden) -->
     <div style="display:none;max-height:0;overflow:hidden;font-size:1px;line-height:1px;color:#f0f4f8;">${escapeHtml(previewText)}&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;&nbsp;&#847;</div>
 
@@ -240,7 +240,7 @@ function renderShell({
                 </table>
 
                 <!-- Greeting -->
-                <p style="margin:0 0 12px;font-size:15px;color:#3d4d60;">Hello <strong>${escapeHtml(employeeName)}</strong>,</p>
+                <p style="margin:0 0 12px;font-size:17px;color:#3d4d60;">Hello <strong>${escapeHtml(employeeName)}</strong>,</p>
 
                 ${body}
               </td>
@@ -348,11 +348,22 @@ function renderTicketDetails(event: RepairTicketNotificationEvent) {
     .map(
       ([label, value]) =>
         `<tr>
-          <td style="padding:9px 14px;color:#8592a6;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;width:38%;border-bottom:1px solid #edf1f7;">${escapeHtml(label)}</td>
-          <td style="padding:9px 14px;font-size:13px;color:#3d4d60;border-bottom:1px solid #edf1f7;">${escapeHtml(value)}</td>
+          <td style="padding:10px 14px;color:#8592a6;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;width:38%;border-bottom:1px solid #edf1f7;">${escapeHtml(label)}</td>
+          <td style="padding:10px 14px;font-size:15px;color:#3d4d60;border-bottom:1px solid #edf1f7;">${escapeHtml(value)}</td>
         </tr>`
     )
     .join('');
+
+  const latestNote = (ticket.notes ?? []).at(-1) ?? null;
+  const noteBlockHtml = latestNote
+    ? `
+      <!-- Technician Note block -->
+      <div style="background:#eef4ff;padding:12px 14px;border-bottom:1px solid #dde3ee;">
+        <p style="margin:0 0 4px;color:#1a73e8;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Technician Note</p>
+        <p style="margin:0;font-size:17px;color:#1d2433;line-height:1.6;font-style:italic;">&quot;${escapeHtml(latestNote.content)}&quot;</p>
+      </div>
+    `
+    : '';
 
   return `
     <!-- Ticket detail card -->
@@ -360,20 +371,22 @@ function renderTicketDetails(event: RepairTicketNotificationEvent) {
 
       <!-- Description block -->
       <div style="background:#f7f9fc;padding:12px 14px;border-bottom:1px solid #dde3ee;">
-        <p style="margin:0 0 4px;color:#8592a6;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Description</p>
-        <p style="margin:0;font-size:13px;color:#3d4d60;line-height:1.6;">${escapeHtml(ticket.description)}</p>
+        <p style="margin:0 0 4px;color:#8592a6;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;">Description</p>
+        <p style="margin:0;font-size:17px;color:#3d4d60;line-height:1.6;">${escapeHtml(ticket.description)}</p>
       </div>
+
+      ${noteBlockHtml}
 
       <!-- Info table -->
       <table role="presentation" style="width:100%;border-collapse:collapse;background:#fff;">
         ${mainHtml}
         <tr>
-          <td style="padding:9px 14px;color:#8592a6;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;width:38%;border-bottom:1px solid #edf1f7;">Priority</td>
-          <td style="padding:9px 14px;border-bottom:1px solid #edf1f7;">${priorityBadge}</td>
+          <td style="padding:10px 14px;color:#8592a6;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;width:38%;border-bottom:1px solid #edf1f7;">Priority</td>
+          <td style="padding:10px 14px;border-bottom:1px solid #edf1f7;">${priorityBadge}</td>
         </tr>
         <tr>
-          <td style="padding:9px 14px;color:#8592a6;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;width:38%;">Status</td>
-          <td style="padding:9px 14px;">${statusBadge}</td>
+          <td style="padding:10px 14px;color:#8592a6;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;width:38%;">Status</td>
+          <td style="padding:10px 14px;">${statusBadge}</td>
         </tr>
       </table>
     </div>
