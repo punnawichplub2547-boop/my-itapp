@@ -24,6 +24,7 @@ COPY --from=builder /app/app ./app
 COPY --from=builder /app/next.config.ts ./next.config.ts
 COPY --from=builder /app/next-env.d.ts ./next-env.d.ts
 COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY --from=builder /app/*.xlsx ./
 
 EXPOSE 3000
 
