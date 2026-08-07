@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   buildMonthlyReportSelection,
   filterTicketsByCreatedMonth,
+  formatThaiMonthYear,
   normalizeReportMonth,
 } from './monthlyTickets';
 import type { RepairTicket } from '../../types';
@@ -53,6 +54,12 @@ test('normalizes report months and rejects invalid values', () => {
   assert.equal(normalizeReportMonth('2026-05'), '2026-05');
   assert.equal(normalizeReportMonth('2026-5'), null);
   assert.equal(normalizeReportMonth('May 2026'), null);
+});
+
+test('formats Thai month and Buddhist era year for reports', () => {
+  assert.equal(formatThaiMonthYear('2026-08'), 'ประจำเดือน สิงหาคม ปี 2569');
+  assert.equal(formatThaiMonthYear('2026-01'), 'ประจำเดือน มกราคม ปี 2569');
+  assert.equal(formatThaiMonthYear(new Date('2026-12-15T00:00:00Z')), 'ประจำเดือน ธันวาคม ปี 2569');
 });
 
 function createTicket(overrides: Partial<RepairTicket>): RepairTicket {

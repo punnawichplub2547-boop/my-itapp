@@ -175,7 +175,6 @@ function renderShell({
   employeeName,
   body,
   accentColor = '#1a73e8',
-  accentLight = '#e8f0fe',
   badgeLabel,
   badgeColor = '#1a73e8',
 }: {

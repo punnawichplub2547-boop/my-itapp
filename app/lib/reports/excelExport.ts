@@ -6,6 +6,7 @@ import {
   applyLandscapeA4PrintSetup,
   loadTemplateStyles,
 } from './excelTemplate';
+import { formatThaiMonthYear, getDefaultReportMonth } from './monthlyTickets';
 
 const REPORT_SUBTITLE = 'รายงานการซ่อมแซมอุปกรณ์ระบบสารสนเทศ (IT Equipment Repair Report)';
 
@@ -62,7 +63,10 @@ export function ticketToReportRow(ticket: RepairTicket, index: number): (string 
 
 export const REPORT_EXCEL_HEADERS = HEADER_LABELS;
 
-export async function buildRepairReportXlsx(tickets: RepairTicket[]): Promise<Buffer> {
+export async function buildRepairReportXlsx(
+  tickets: RepairTicket[],
+  options?: { month?: string; now?: Date } | string
+): Promise<Buffer> {
   const styles = await loadTemplateStyles();
 
   const wb = new ExcelJS.Workbook();
@@ -87,13 +91,18 @@ export async function buildRepairReportXlsx(tickets: RepairTicket[]): Promise<Bu
   });
   ws.getRow(1).getCell(1).value = styles.companyText;
 
+  const monthArg = typeof options === 'string' ? options : options?.month;
+  const nowArg = typeof options === 'object' ? options?.now : undefined;
+  const periodText = formatThaiMonthYear(monthArg || getDefaultReportMonth(nowArg));
+  const fullSubtitle = `${REPORT_SUBTITLE} ${periodText}`;
+
   ws.mergeCells(2, 1, 2, headerSpan);
   ws.getRow(2).height = 30;
   applyCellStyle(ws.getRow(2).getCell(1), {
     font: styles.subtitleFont,
     alignment: styles.subtitleAlign,
   });
-  ws.getRow(2).getCell(1).value = REPORT_SUBTITLE;
+  ws.getRow(2).getCell(1).value = fullSubtitle;
 
   const headerRow = ws.getRow(3);
   headerRow.height = 28;

@@ -64,7 +64,41 @@ export function getCreatedMonth(createdAt: string | undefined) {
   return date.toISOString().slice(0, 7);
 }
 
+const THAI_MONTH_NAMES = [
+  'มกราคม',
+  'กุมภาพันธ์',
+  'มีนาคม',
+  'เมษายน',
+  'พฤษภาคม',
+  'มิถุนายน',
+  'กรกฎาคม',
+  'สิงหาคม',
+  'กันยายน',
+  'ตุลาคม',
+  'พฤศจิกายน',
+  'ธันวาคม',
+] as const;
+
+export function formatThaiMonthYear(monthOrDate?: string | Date | null): string {
+  let yearBE: number;
+  let monthIndex: number;
+
+  if (typeof monthOrDate === 'string' && REPORT_MONTH_PATTERN.test(monthOrDate.trim())) {
+    const [yearStr, monthStr] = monthOrDate.trim().split('-');
+    yearBE = parseInt(yearStr, 10) + 543;
+    monthIndex = parseInt(monthStr, 10) - 1;
+  } else {
+    const d = monthOrDate instanceof Date ? monthOrDate : new Date();
+    yearBE = d.getFullYear() + 543;
+    monthIndex = d.getMonth();
+  }
+
+  const monthName = THAI_MONTH_NAMES[monthIndex] ?? '';
+  return `ประจำเดือน ${monthName} ปี ${yearBE}`;
+}
+
 function getTicketTime(createdAt: string | undefined) {
   const date = createdAt ? new Date(createdAt) : null;
   return date && !Number.isNaN(date.getTime()) ? date.getTime() : 0;
 }
+

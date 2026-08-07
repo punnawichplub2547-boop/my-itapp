@@ -6,6 +6,7 @@ import {
   applyLandscapeA4PrintSetup,
   loadTemplateStyles,
 } from '../reports/excelTemplate';
+import { formatThaiMonthYear, getDefaultReportMonth } from '../reports/monthlyTickets';
 import { parseDeviceDate } from './warrantyAlerts';
 
 const HEADER_LABELS: readonly string[] = [
@@ -70,7 +71,10 @@ export function deviceToReportRow(device: Device, index: number): (string | numb
 
 export const DEVICE_EXCEL_HEADERS = HEADER_LABELS;
 
-export async function buildDeviceInventoryXlsx(devices: Device[]): Promise<Buffer> {
+export async function buildDeviceInventoryXlsx(
+  devices: Device[],
+  options?: { month?: string; now?: Date } | string
+): Promise<Buffer> {
   const styles = await loadTemplateStyles();
 
   const wb = new ExcelJS.Workbook();
@@ -95,13 +99,18 @@ export async function buildDeviceInventoryXlsx(devices: Device[]): Promise<Buffe
   });
   ws.getRow(1).getCell(1).value = styles.companyText;
 
+  const monthArg = typeof options === 'string' ? options : options?.month;
+  const nowArg = typeof options === 'object' ? options?.now : undefined;
+  const periodText = formatThaiMonthYear(monthArg || getDefaultReportMonth(nowArg));
+  const fullSubtitle = `${styles.subtitleText} ${periodText}`;
+
   ws.mergeCells(2, 1, 2, headerSpan);
   ws.getRow(2).height = 30;
   applyCellStyle(ws.getRow(2).getCell(1), {
     font: styles.subtitleFont,
     alignment: styles.subtitleAlign,
   });
-  ws.getRow(2).getCell(1).value = styles.subtitleText;
+  ws.getRow(2).getCell(1).value = fullSubtitle;
 
   const headerRow = ws.getRow(3);
   headerRow.height = 28;

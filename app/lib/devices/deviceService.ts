@@ -185,7 +185,7 @@ export async function updateDeviceAssignedTo(
   let assignedEmail = '';
   let repository: DeviceRepository;
 
-  if (assignedEmailOrRepository && typeof (assignedEmailOrRepository as any).updateAssignedTo === 'function') {
+  if (assignedEmailOrRepository && typeof (assignedEmailOrRepository as Record<string, unknown>).updateAssignedTo === 'function') {
     repository = assignedEmailOrRepository as DeviceRepository;
   } else {
     if (assignedEmailOrRepository !== undefined && typeof assignedEmailOrRepository !== 'string') {

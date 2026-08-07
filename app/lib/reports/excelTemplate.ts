@@ -201,6 +201,8 @@ function applySignatureBorders(
   endColumn: number,
   leftEndColumn: number
 ) {
+  const rightStartColumn = leftEndColumn + 1;
+
   for (let columnNumber = startColumn; columnNumber <= endColumn; columnNumber += 1) {
     const cell = worksheet.getRow(rowNumber).getCell(columnNumber);
     const border: Partial<ExcelJS.Borders> = {
@@ -209,15 +211,15 @@ function applySignatureBorders(
 
     if (rowNumber === startRow) border.top = SIGNATURE_BORDER;
     if (rowNumber === endRow) border.bottom = SIGNATURE_BORDER;
-    if (columnNumber === startColumn) border.left = SIGNATURE_BORDER;
-    if (columnNumber === endColumn) border.right = SIGNATURE_BORDER;
 
-    if (columnNumber === leftEndColumn) {
+    if (columnNumber >= startColumn && columnNumber <= leftEndColumn) {
+      if (columnNumber === startColumn) border.left = SIGNATURE_BORDER;
       border.right = SIGNATURE_BORDER;
     }
 
-    if (columnNumber === leftEndColumn + 1) {
+    if (columnNumber >= rightStartColumn && columnNumber <= endColumn) {
       border.left = SIGNATURE_BORDER;
+      border.right = SIGNATURE_BORDER;
     }
 
     cell.border = border as ExcelJS.Borders;

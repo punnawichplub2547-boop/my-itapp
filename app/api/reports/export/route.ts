@@ -32,7 +32,7 @@ export async function GET(request: Request) {
       sortOrder
     );
 
-    const buffer = await buildRepairReportXlsx(tickets);
+    const buffer = await buildRepairReportXlsx(tickets, month);
     const filename = `repair-report-${month}.xlsx`;
 
     return new Response(new Uint8Array(buffer), {

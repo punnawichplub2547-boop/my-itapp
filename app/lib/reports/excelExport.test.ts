@@ -51,9 +51,13 @@ const INVENTORY_DEVICE: Device = {
 };
 
 test('repair report workbook keeps one company heading and adds a sign-off block', async () => {
-  const worksheet = await readFirstWorksheet(await buildRepairReportXlsx([REPORT_TICKET]));
+  const worksheet = await readFirstWorksheet(await buildRepairReportXlsx([REPORT_TICKET], '2026-08'));
 
   assert.equal(countFirstColumnText(worksheet, COMPANY_TITLE), 1);
+  assert.equal(
+    worksheet.getRow(2).getCell(1).value,
+    'รายงานการซ่อมแซมอุปกรณ์ระบบสารสนเทศ (IT Equipment Repair Report) ประจำเดือน สิงหาคม ปี 2569'
+  );
   assert.equal(worksheet.getRow(3).getCell(1).value, 'No');
   assert.equal(worksheet.getRow(6).getCell(1).value, null);
   assert.equal(worksheet.getRow(6).getCell(8).value, 'ผู้จัดทำ');
@@ -91,9 +95,15 @@ test('repair report workbook expands rows for wrapped description and solution t
 });
 
 test('device inventory workbook keeps one company heading and adds a sign-off block', async () => {
-  const worksheet = await readFirstWorksheet(await buildDeviceInventoryXlsx([INVENTORY_DEVICE]));
+  const worksheet = await readFirstWorksheet(
+    await buildDeviceInventoryXlsx([INVENTORY_DEVICE], '2026-08')
+  );
 
   assert.equal(countFirstColumnText(worksheet, COMPANY_TITLE), 1);
+  assert.equal(
+    worksheet.getRow(2).getCell(1).value,
+    'ทะเบียนรายชื่ออุปกรณ์ระบบสารสนเทศและอุปกรณ์ต่อพ่วง (IT System Asset) ประจำเดือน สิงหาคม ปี 2569'
+  );
   assert.equal(worksheet.getRow(3).getCell(1).value, 'No');
   assert.equal(worksheet.getRow(6).getCell(1).value, null);
   assert.equal(worksheet.getRow(6).getCell(15).value, 'ผู้จัดทำ');
