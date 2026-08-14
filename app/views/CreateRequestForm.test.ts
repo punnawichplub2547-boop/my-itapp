@@ -4,6 +4,7 @@ import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import CreateRequestForm, {
   REPAIR_PRIORITY_OPTIONS,
+  getRequestDeviceEmail,
   getRequestDeviceModel,
   listRequestAssignees,
   listRequestDeviceNames,
@@ -19,7 +20,7 @@ const REQUEST_DEVICES: Device[] = [
     ipAddress: '10.0.0.10',
     department: 'IT',
     assignedTo: 'chakrit',
-    assignedEmail: '',
+    assignedEmail: 'chakrit@car-1996.com',
     deviceType: 'PC',
     model: 'OptiPlex 360',
     hdd: '500 GB',
@@ -130,6 +131,13 @@ test('derives the selected device model from device name', () => {
   assert.equal(getRequestDeviceModel(REQUEST_DEVICES, 'IT', 'CAR001'), 'OptiPlex 360');
   assert.equal(getRequestDeviceModel(REQUEST_DEVICES, 'Finance', 'CAR003'), 'PowerEdge R740');
   assert.equal(getRequestDeviceModel(REQUEST_DEVICES, 'IT', 'CUSTOM-DEVICE'), '');
+});
+
+test('derives the selected device assigned email from device name', () => {
+  assert.equal(getRequestDeviceEmail(REQUEST_DEVICES, 'IT', 'CAR001'), 'chakrit@car-1996.com');
+  assert.equal(getRequestDeviceEmail(REQUEST_DEVICES, 'IT', 'CAR002'), '');
+  assert.equal(getRequestDeviceEmail(REQUEST_DEVICES, 'Finance', 'CAR003'), '');
+  assert.equal(getRequestDeviceEmail(REQUEST_DEVICES, 'IT', 'CUSTOM-DEVICE'), '');
 });
 
 test('renders inventory-backed department choices and repair priority options', () => {

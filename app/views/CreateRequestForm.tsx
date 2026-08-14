@@ -47,6 +47,10 @@ export function getRequestDeviceModel(devices: Device[], department: string, dev
   return findRequestDeviceByName(devices, department, deviceName)?.model ?? '';
 }
 
+export function getRequestDeviceEmail(devices: Device[], department: string, deviceName: string) {
+  return findRequestDeviceByName(devices, department, deviceName)?.assignedEmail?.trim() ?? '';
+}
+
 function findRequestDeviceByName(devices: Device[], department: string, deviceName: string) {
   const normalizedDeviceName = deviceName.trim();
 
@@ -110,6 +114,7 @@ export default function CreateRequestForm({
     setDepartment(value);
     setDeviceName('');
     setAssignedTo('');
+    setEmployeeEmail('');
     setSelectedInventoryDeviceId(null);
   }
 
@@ -125,11 +130,33 @@ export default function CreateRequestForm({
         setDepartment(matchedDevice.department);
       }
 
-      if (!assignedTo && matchedDevice.assignedTo) {
+      if (matchedDevice.assignedTo) {
         setAssignedTo(matchedDevice.assignedTo);
+      }
+
+      const matchedEmail = matchedDevice.assignedEmail?.trim();
+      if (matchedEmail) {
+        setEmployeeEmail(matchedEmail);
+      } else {
+        setEmployeeEmail('');
       }
     } else {
       setSelectedInventoryDeviceId(null);
+    }
+  }
+
+  function handleAssignedToChange(value: string) {
+    setAssignedTo(value);
+    if (!employeeEmail && value.trim()) {
+      const matched = devices.find(
+        (device) =>
+          device.assignedTo.toLowerCase() === value.trim().toLowerCase() &&
+          (!department.trim() || device.department === department) &&
+          Boolean(device.assignedEmail?.trim())
+      );
+      if (matched?.assignedEmail?.trim()) {
+        setEmployeeEmail(matched.assignedEmail.trim());
+      }
     }
   }
 
@@ -227,7 +254,7 @@ export default function CreateRequestForm({
                     type="text"
                     list="assignee-options"
                     value={assignedTo}
-                    onChange={(e) => setAssignedTo(e.target.value)}
+                    onChange={(e) => handleAssignedToChange(e.target.value)}
                     placeholder="Select or type an employee name"
                     className={comboInputClass}
                   />
