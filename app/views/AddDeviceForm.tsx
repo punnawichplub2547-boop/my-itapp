@@ -11,7 +11,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import { DEVICE_DEPARTMENTS } from '../data/departments';
-import type { Device, DeviceStatus, DeviceType, IpMode } from '../types';
+import type { Device, DeviceStatus, DeviceType, IpMode, SystemSettings } from '../types';
 
 const DEVICE_STATUS_OPTIONS: DeviceStatus[] = ['Active', 'Inactive', 'Out of Service'];
 const DEVICE_TYPE_OPTIONS: DeviceType[] = [
@@ -121,12 +121,21 @@ export function buildCreateDevicePayload(values: AddDeviceFormValues) {
 }
 
 export default function AddDeviceForm({
+  settings,
   onBack,
   onDeviceCreated,
 }: {
+  settings?: SystemSettings;
   onBack: () => void;
   onDeviceCreated?: (device: Device) => void;
 }) {
+  const deviceTypeOptions = (settings?.deviceTypes && settings.deviceTypes.length > 0)
+    ? (settings.deviceTypes as DeviceType[])
+    : DEVICE_TYPE_OPTIONS;
+  const departmentOptions = (settings?.departments && settings.departments.length > 0)
+    ? settings.departments
+    : DEVICE_DEPARTMENTS;
+
   const [values, setValues] = useState<AddDeviceFormValues>(createInitialValues);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -226,7 +235,7 @@ export default function AddDeviceForm({
                     onChange={(event) => setField('deviceType', event.target.value as DeviceType)}
                     className="w-full appearance-none rounded-xl border border-outline-variant bg-surface-container-low px-4 py-2.5 text-sm outline-none focus:border-primary"
                   >
-                    {DEVICE_TYPE_OPTIONS.map((option) => (
+                    {deviceTypeOptions.map((option) => (
                       <option key={option}>{option}</option>
                     ))}
                   </select>
@@ -347,7 +356,7 @@ export default function AddDeviceForm({
                 className="w-full appearance-none rounded-xl border border-outline-variant bg-white px-4 py-2.5 text-sm outline-none focus:border-primary"
               />
               <datalist id="depts">
-                {DEVICE_DEPARTMENTS.map((departmentOption) => (
+                {departmentOptions.map((departmentOption) => (
                   <option key={departmentOption} value={departmentOption} />
                 ))}
               </datalist>

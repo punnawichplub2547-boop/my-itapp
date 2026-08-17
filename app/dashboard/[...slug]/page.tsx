@@ -11,6 +11,7 @@ const SLUG_TO_VIEW: Record<string, ViewType> = {
   'add-new-device': 'add-device',
   reports: 'reports',
   'warranty-audit': 'warranty-audit',
+  settings: 'settings',
 };
 
 export default async function DashboardSubPage({

@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react';
 import { motion } from 'motion/react';
 import { Ticket, Laptop, ArrowLeft, Send, User, AlertCircle } from 'lucide-react';
-import type { Device, RepairTicket } from '../types';
+import type { Device, RepairTicket, SystemSettings } from '../types';
 
 const PROBLEM_TYPE_OPTIONS = ['Hardware Failure', 'Software Bug', 'Physical Damage', 'Maintenance'];
 export const REPAIR_PRIORITY_OPTIONS: RepairTicket['priority'][] = [
@@ -70,20 +70,28 @@ function findRequestDeviceByName(devices: Device[], department: string, deviceNa
 export default function CreateRequestForm({
   devices = [],
   tickets = [],
+  settings,
   onBack,
   onTicketCreated,
 }: {
   devices?: Device[];
   tickets?: RepairTicket[];
+  settings?: SystemSettings;
   onBack: () => void;
   onTicketCreated?: (ticket: RepairTicket) => void;
 }) {
+  const problemOptions = useMemo(() => {
+    return settings?.problemTypes && settings.problemTypes.length > 0
+      ? settings.problemTypes
+      : PROBLEM_TYPE_OPTIONS;
+  }, [settings]);
+
   const [department, setDepartment] = useState('');
   const [deviceName, setDeviceName] = useState('');
   const [selectedInventoryDeviceId, setSelectedInventoryDeviceId] = useState<string | null>(null);
   const [assignedTo, setAssignedTo] = useState('');
   const [employeeEmail, setEmployeeEmail] = useState('');
-  const [problemType, setProblemType] = useState(PROBLEM_TYPE_OPTIONS[0]);
+  const [problemType, setProblemType] = useState(problemOptions[0] ?? 'Hardware Failure');
   const [priority, setPriority] = useState<RepairTicket['priority']>('Medium');
   const [description, setDescription] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -93,7 +101,11 @@ export default function CreateRequestForm({
   const criticalOpenTickets = openTickets.filter(t => t.priority === 'Critical');
   const featuredTicket = criticalOpenTickets[0] ?? openTickets[0] ?? null;
 
-  const departmentSuggestions = useMemo(() => listRequestDepartments(devices), [devices]);
+  const departmentSuggestions = useMemo(() => {
+    const fromDevices = listRequestDepartments(devices);
+    const fromSettings = settings?.departments ?? [];
+    return uniqueSortedValues([...fromDevices, ...fromSettings]);
+  }, [devices, settings]);
 
   const deviceNameSuggestions = useMemo(
     () => listRequestDeviceNames(devices, department),
@@ -310,7 +322,7 @@ export default function CreateRequestForm({
                     onChange={(event) => setProblemType(event.target.value)}
                     className="w-full px-4 py-2.5 bg-surface-container-low border border-outline-variant rounded-xl text-sm outline-none focus:border-primary appearance-none"
                   >
-                    {PROBLEM_TYPE_OPTIONS.map((option) => (
+                    {problemOptions.map((option) => (
                       <option key={option}>{option}</option>
                     ))}
                   </select>

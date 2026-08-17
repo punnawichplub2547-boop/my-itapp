@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AnimatePresence } from 'motion/react';
-import { LayoutDashboard, Package, BarChart, PlusCircle, Search, ShieldCheck, LogOut, PlusSquare, History, Clock, Laptop, Ticket } from 'lucide-react';
-import { Device, RepairTicket, ViewType } from './types';
+import { LayoutDashboard, Package, BarChart, PlusCircle, Search, ShieldCheck, LogOut, PlusSquare, History, Clock, Laptop, Ticket, Sliders } from 'lucide-react';
+import { Device, RepairTicket, ViewType, SystemSettings } from './types';
 import NavItem from './components/NavItem';
 import LoginView from './views/LoginView';
 import Dashboard from './views/Dashboard';
@@ -14,6 +14,8 @@ import ReportsView from './views/ReportsView';
 import CreateRequestForm from './views/CreateRequestForm';
 import AddDeviceForm from './views/AddDeviceForm';
 import WarrantyAuditView from './views/WarrantyAuditView';
+import SettingsView from './views/SettingsView';
+import { DEFAULT_SYSTEM_SETTINGS } from './lib/settings/settingsDefaults';
 import {
   AppSearchResult,
   AppSearchResultType,
@@ -29,6 +31,7 @@ const VIEW_TO_PATH: Record<ViewType, string> = {
   'add-device': '/dashboard/add-new-device',
   reports: '/dashboard/reports',
   'warranty-audit': '/dashboard/warranty-audit',
+  settings: '/dashboard/settings',
   login: '/',
 };
 
@@ -49,9 +52,33 @@ export default function App({
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(initialTicketId ?? null);
   const [devices, setDevices] = useState<Device[]>([]);
   const [tickets, setTickets] = useState<RepairTicket[]>([]);
+  const [settings, setSettings] = useState<SystemSettings>(DEFAULT_SYSTEM_SETTINGS);
   const [shellSearchQuery, setShellSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const searchContainerRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSettings() {
+      try {
+        const response = await fetch('/api/settings');
+        const result = await response.json();
+        if (!response.ok || cancelled) return;
+        if (result.settings) {
+          setSettings(result.settings);
+        }
+      } catch {
+        // fallback to default
+      }
+    }
+
+    void loadSettings();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -211,6 +238,7 @@ export default function App({
           <NavItem icon={<Package />} label="Device Inventory" active={currentView === 'inventory'} onClick={() => router.push(VIEW_TO_PATH.inventory)} collapsed={!isSidebarOpen} />
           <NavItem icon={<PlusCircle />} label="Add New Device" active={currentView === 'add-device'} onClick={() => router.push(VIEW_TO_PATH['add-device'])} collapsed={!isSidebarOpen} />
           <NavItem icon={<BarChart />} label="Reports" active={currentView === 'reports'} onClick={() => router.push(VIEW_TO_PATH.reports)} collapsed={!isSidebarOpen} />
+          <NavItem icon={<Sliders />} label="System Settings" active={currentView === 'settings'} onClick={() => router.push(VIEW_TO_PATH.settings)} collapsed={!isSidebarOpen} />
         </nav>
 
         <div className="p-3 border-t border-white/10 space-y-1">
@@ -340,11 +368,19 @@ export default function App({
                 />
               )}
               {currentView === 'reports' && <ReportsView key="reports" />}
+              {currentView === 'settings' && (
+                <SettingsView
+                  key="settings"
+                  initialSettings={settings}
+                  onSettingsUpdated={setSettings}
+                />
+              )}
               {currentView === 'create-request' && (
                 <CreateRequestForm
                   key="create-request"
                   devices={devices}
                   tickets={tickets}
+                  settings={settings}
                   onBack={() => router.push(VIEW_TO_PATH.dashboard)}
                   onTicketCreated={handleTicketCreated}
                 />
@@ -352,6 +388,7 @@ export default function App({
               {currentView === 'add-device' && (
                 <AddDeviceForm
                   key="add-device"
+                  settings={settings}
                   onBack={() => router.push(VIEW_TO_PATH.dashboard)}
                   onDeviceCreated={(device) => {
                     setDevices((currentDevices) => upsertDevice(currentDevices, device));

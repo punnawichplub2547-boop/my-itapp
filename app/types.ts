@@ -123,7 +123,17 @@ export type ViewType =
   | 'add-device'
   | 'reports'
   | 'warranty-audit'
+  | 'settings'
   | 'login';
+
+export interface SystemSettings {
+  departments: string[];
+  problemTypes: string[];
+  deviceTypes: string[];
+  notificationEmails: string[];
+  warrantyExpiringSoonDays: number;
+  companyName?: string;
+}
 
 export interface ReportEntry {
   id: string;
